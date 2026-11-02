@@ -5,7 +5,7 @@ Each case is one accessibility issue in one React component, with the outcome th
 ```bash
 npm run evals:validate                 # check every case and the manifest
 npm run evals -- --reference           # check the runner: the reference answers should all pass
-npm run evals -- --replay <report>     # re-score a saved run, for free
+npm run evals -- --rescore <report>    # re-score a saved run, for free
 npm run evals -- --case <id> --case …  # only these cases
 ```
 

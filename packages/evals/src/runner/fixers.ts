@@ -5,18 +5,23 @@
 // - reference: answers every case with its expected outcome, and fix cases
 //   with the diff from input/ to expected/. Every case should pass; if one
 //   doesn't, the harness or the case is wrong, not the agent.
-// - replay: returns the proposals saved in an earlier run's JSON report, so a
-//   change to the scorers or the harness can be checked for free.
+// - rescore: returns the proposals saved in an earlier run's JSON report, so a
+//   change to the scorers or the harness can be checked for free. It never
+//   runs agent code; `--replay` will, on recorded responses, once the provider
+//   has a replay mode (#6).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PatchProposal, type EvalCase } from '@curbcut/core';
 import { createPatch } from 'diff';
 import { RunReport } from './report.ts';
 
-export type FixerResult = {
-  proposal: unknown;
+export type FixerResult = (
+  | { proposal: unknown }
+  /** A failure the fixer can still give metrics for (a recorded error). */
+  | { error: string }
+) & {
   costUsd: number;
-  /** Set when the fixer knows better than the runner's wall clock (replay). */
+  /** Set when the fixer knows better than the runner's wall clock (rescore). */
   latencyMs?: number;
 };
 
@@ -46,8 +51,8 @@ export const referenceFixer: Fixer = {
   },
 };
 
-/** Replays the proposals in a saved report. Throws if the report doesn't parse. */
-export function replayFixer(reportPath: string): Fixer {
+/** Returns the proposals in a saved report. Throws if the report doesn't parse. */
+export function rescoreFixer(reportPath: string): Fixer {
   const report = RunReport.parse(JSON.parse(readFileSync(reportPath, 'utf8')));
   const byCase = new Map(report.cases.map((r) => [r.result.caseId, r]));
   return {
@@ -59,6 +64,7 @@ export function replayFixer(reportPath: string): Fixer {
         const r = byCase.get(c.id);
         if (!r) throw new Error(`no recording for this case in ${reportPath}`);
         const { result } = r;
+        const metrics = { costUsd: result.costUsd, latencyMs: result.latencyMs };
         // A case that changed since the recording would score a stale answer.
         if (result.caseVersion !== c.version || result.datasetVersion !== datasetVersion) {
           throw new Error(
@@ -66,9 +72,9 @@ export function replayFixer(reportPath: string): Fixer {
               `now case v${c.version} of dataset v${datasetVersion}`,
           );
         }
-        if (result.outcome === 'error') throw new Error(`recorded error: ${result.error}`);
-        if (!r.proposal) throw new Error('recording has no proposal');
-        resolve({ proposal: r.proposal, costUsd: result.costUsd, latencyMs: result.latencyMs });
+        if (result.outcome === 'error') resolve({ error: result.error, ...metrics });
+        else if (!r.proposal) resolve({ error: 'recording has no proposal', ...metrics });
+        else resolve({ proposal: r.proposal, ...metrics });
       }),
   };
 }

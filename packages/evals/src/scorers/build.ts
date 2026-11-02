@@ -3,7 +3,9 @@
 //
 // Inputs type-check by construction (CI checks the dataset), so any type
 // error is the patch's. Inputs are full of jsx-a11y errors on purpose, so
-// lint only fails on rules that report more errors than on the input.
+// lint only fails on rules that report more errors than on the input. The
+// count is per rule, so a patch that fixes one error and adds another of the
+// same rule nets zero and passes.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';

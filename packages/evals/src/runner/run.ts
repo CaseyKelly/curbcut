@@ -3,11 +3,11 @@
 // summary table and writes a JSON report.
 //
 //   npm run evals -- --reference          harness self-check: every case should pass
-//   npm run evals -- --replay <report>    re-score a saved run for free
+//   npm run evals -- --rescore <report>   re-score a saved run for free
 //   npm run evals -- --case <id> ...      only these cases
 //   npm run evals -- --out <path>         where to write the report
 //
-// Without --reference or --replay it runs the live fixer, which needs
+// Without --reference or --rescore it runs the live fixer, which needs
 // proposeFix from @curbcut/agent (#9). Needs Chromium:
 // `npx playwright install chromium`.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -20,9 +20,16 @@ import { validateDataset, type LoadedCase } from '../dataset/dataset.ts';
 import { scoreBuilds, type BuildCheck } from '../scorers/build.ts';
 import { scanPages, scoreResolved, type Page } from '../scorers/resolved.ts';
 import { scoreScoped } from '../scorers/scoped.ts';
-import { referenceFixer, replayFixer, type Fixer } from './fixers.ts';
+import { referenceFixer, rescoreFixer, type Fixer } from './fixers.ts';
 import { applyDiff } from './patch.ts';
-import { passed, summaryLines, totals, type CaseRecord, type RunMode } from './report.ts';
+import {
+  RunReport,
+  passed,
+  summaryLines,
+  totals,
+  type CaseRecord,
+  type RunMode,
+} from './report.ts';
 
 const evalsRoot = fileURLToPath(new URL('../../', import.meta.url));
 // npm runs workspace scripts from the package; paths on the command line are
@@ -31,7 +38,7 @@ const cwd = process.env.INIT_CWD ?? process.cwd();
 const { values } = parseArgs({
   options: {
     reference: { type: 'boolean', default: false },
-    replay: { type: 'string' },
+    rescore: { type: 'string' },
     case: { type: 'string', multiple: true },
     out: { type: 'string' },
   },
@@ -39,24 +46,24 @@ const { values } = parseArgs({
 
 let mode: RunMode;
 let fixer: Fixer;
-if (values.reference && values.replay) {
-  console.error('Use --reference or --replay, not both.');
+if (values.reference && values.rescore) {
+  console.error('Use --reference or --rescore, not both.');
   process.exit(2);
 } else if (values.reference) {
   mode = 'reference';
   fixer = referenceFixer;
-} else if (values.replay) {
-  mode = 'replay';
+} else if (values.rescore) {
+  mode = 'rescore';
   try {
-    fixer = replayFixer(resolve(cwd, values.replay));
+    fixer = rescoreFixer(resolve(cwd, values.rescore));
   } catch (e) {
-    console.error(`Can't replay ${values.replay}: ${(e as Error).message}`);
+    console.error(`Can't rescore ${values.rescore}: ${(e as Error).message}`);
     process.exit(2);
   }
 } else {
   console.error(
     'The live fixer needs proposeFix from @curbcut/agent (#9), which has not landed yet.\n' +
-      'Use --reference to check the harness, or --replay <report.json>.',
+      'Use --reference to check the harness, or --rescore <report.json>.',
   );
   process.exit(2);
 }
@@ -99,9 +106,13 @@ for (const loaded of cases) {
     const r = await fixer.propose(c, input, dir, datasetVersion);
     w.costUsd = r.costUsd;
     w.latencyMs = r.latencyMs ?? Math.round(performance.now() - started);
-    const parsed = PatchProposal.safeParse(r.proposal);
-    if (parsed.success) w.proposal = parsed.data;
-    else w.error = `proposal does not match PatchProposal:\n${z.prettifyError(parsed.error)}`;
+    if ('error' in r) {
+      w.error = r.error;
+    } else {
+      const parsed = PatchProposal.safeParse(r.proposal);
+      if (parsed.success) w.proposal = parsed.data;
+      else w.error = `proposal does not match PatchProposal:\n${z.prettifyError(parsed.error)}`;
+    }
   } catch (e) {
     w.latencyMs = Math.round(performance.now() - started);
     w.error = (e as Error).message || String(e);
@@ -121,7 +132,7 @@ for (const w of work) {
   const c = w.loaded.case;
   const applied =
     p.filePath === c.filePath
-      ? applyDiff(w.input, p.diff)
+      ? applyDiff(w.input, p.diff, c.filePath)
       : { ok: false as const, error: `diff patches ${p.filePath}, not ${c.filePath}` };
   if (!applied.ok) {
     w.scores = { resolved: false, buildSafe: false, scoped: false };
@@ -172,6 +183,7 @@ try {
     w.notes.push(...build.notes);
     const resolved = scoreResolved(
       c.issue.ruleId,
+      c.expectedOutcome,
       scanned!.scans.get(`${c.id}/input`)!,
       scanned!.scans.get(`${c.id}/patched`)!,
     );
@@ -218,7 +230,8 @@ const records: CaseRecord[] = work.map((w) => {
 });
 
 const createdAt = new Date().toISOString();
-const report = {
+// Parsed here so a malformed report fails this run, not a later --rescore.
+const report = RunReport.parse({
   createdAt,
   mode,
   datasetVersion,
@@ -227,7 +240,7 @@ const report = {
   axeVersion,
   totals: totals(records),
   cases: records,
-};
+});
 const out = resolve(
   cwd,
   values.out ?? join(evalsRoot, 'reports', `${createdAt.replaceAll(/[:.]/g, '-')}-${mode}.json`),

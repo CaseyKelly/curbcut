@@ -42,8 +42,8 @@ describe('scoreScoped', () => {
 describe('scoreResolved', () => {
   const scan = (counts: Record<string, number>) => ({ counts: new Map(Object.entries(counts)) });
 
-  it('passes when the target rule loses a node and nothing is new', () => {
-    expect(scoreResolved('image-alt', scan({ 'image-alt': 1 }), scan({}))).toEqual({
+  it('passes when the target rule is gone and nothing is new', () => {
+    expect(scoreResolved('image-alt', 'fix', scan({ 'image-alt': 1 }), scan({}))).toEqual({
       pass: true,
       notes: [],
     });
@@ -51,18 +51,38 @@ describe('scoreResolved', () => {
 
   it('fails when the target is still reported', () => {
     expect(
-      scoreResolved('image-alt', scan({ 'image-alt': 1 }), scan({ 'image-alt': 1 })).notes,
+      scoreResolved('image-alt', 'fix', scan({ 'image-alt': 1 }), scan({ 'image-alt': 1 })).notes,
     ).toEqual(['resolved: image-alt is still reported']);
   });
 
+  it('fails when only some of the target nodes are fixed', () => {
+    expect(
+      scoreResolved('image-alt', 'fix', scan({ 'image-alt': 2 }), scan({ 'image-alt': 1 })).notes,
+    ).toEqual(['resolved: image-alt is still reported']);
+  });
+
+  it.each(['fix', 'unsure'] as const)(
+    'fails a %s case whose input no longer reproduces the rule',
+    (expected) => {
+      expect(scoreResolved('image-alt', expected, scan({}), scan({}))).toEqual({
+        pass: false,
+        notes: ['resolved: input no longer reproduces image-alt'],
+      });
+    },
+  );
+
+  it('passes a no-change case whose input has no target', () => {
+    expect(scoreResolved('image-alt', 'no_change_needed', scan({}), scan({})).pass).toBe(true);
+  });
+
   it('fails a new violation, even on a no-change case with no target', () => {
-    expect(scoreResolved('image-alt', scan({}), scan({ label: 1 })).notes).toEqual([
-      'resolved: new label violation (0 -> 1 nodes)',
-    ]);
+    expect(
+      scoreResolved('image-alt', 'no_change_needed', scan({}), scan({ label: 1 })).notes,
+    ).toEqual(['resolved: new label violation (0 -> 1 nodes)']);
   });
 
   it('fails when a page could not be rendered', () => {
-    const r = scoreResolved('image-alt', scan({ 'image-alt': 1 }), {
+    const r = scoreResolved('image-alt', 'fix', scan({ 'image-alt': 1 }), {
       error: 'render failed: boom',
     });
     expect(r).toEqual({ pass: false, notes: ['resolved: patched file render failed: boom'] });

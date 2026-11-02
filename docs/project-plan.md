@@ -161,7 +161,7 @@ Evals score the fixer from Milestone 1 onward. To make that possible, M1 ships a
 
 **Scorers.** Each case gets five scores:
 
-- **(a) Resolved.** Render the patched component with a tiny Vite harness in Playwright and run axe. The target violation must be gone, with no new violations.
+- **(a) Resolved.** Render the patched component with a tiny Vite harness in Playwright and run axe. The target violation must be gone, with no new violations: the target rule reports no nodes, and no rule reports more nodes than on the input. Nodes are counted rather than compared because a fix can move the DOM around, which changes their selectors, so one node swapped for another under a non-target rule goes unnoticed. A fix or unsure case whose input no longer reports its target rule fails (a), so axe drift can't pass a no-op.
 - **(b) Build safe.** `tsc --noEmit`, ESLint with `jsx-a11y`, and the case's own test if it has one. Inputs break `jsx-a11y` rules on purpose, so ESLint fails only on errors the patch adds.
 - **(c) Scoped.** The diff touches only the entry file and stays near the offending element. For no-change cases, any diff fails.
 - **(d) Judge.** Haiku 5.5 scores 1–5 against a written rubric: correct, minimal, idiomatic React, and native elements preferred over ARIA. Upasana hand-labels 15 cases to calibrate it, and we report how often the judge agrees with her.

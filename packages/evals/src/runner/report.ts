@@ -1,9 +1,9 @@
 // The run report: one record per case, run totals, and the printed summary.
-// The JSON report is also what `--replay` reads back.
+// The JSON report is also what `--rescore` reads back.
 import { EvalResult, PatchOutcome, PatchProposal } from '@curbcut/core';
 import { z } from 'zod';
 
-export const RunMode = z.enum(['live', 'reference', 'replay']);
+export const RunMode = z.enum(['live', 'reference', 'rescore']);
 export type RunMode = z.infer<typeof RunMode>;
 
 export const CaseRecord = z.strictObject({
@@ -11,7 +11,7 @@ export const CaseRecord = z.strictObject({
   expectedOutcome: PatchOutcome,
   category: z.string().min(1),
   pass: z.boolean(),
-  /** What the fixer proposed, so the run can be replayed and inspected. */
+  /** What the fixer proposed, so the run can be rescored and inspected. */
   proposal: PatchProposal.optional(),
   /** Why a scorer failed, or what a crashed case threw. */
   notes: z.array(z.string()),
