@@ -23,6 +23,14 @@ export class StructuredOutputError extends Error {
   }
 }
 
+/** A structured answer was cut off at `max_tokens`, so it wasn't sent for repair. */
+export class OutputTruncatedError extends Error {
+  override name = 'OutputTruncatedError';
+  constructor(readonly maxTokens: number) {
+    super(`Model output was cut off at max_tokens (${maxTokens}); raise maxTokens`);
+  }
+}
+
 /** The model declined the request (`stop_reason: "refusal"`). Retrying won't help. */
 export class RefusalError extends Error {
   override name = 'RefusalError';

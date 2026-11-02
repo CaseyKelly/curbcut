@@ -6,6 +6,7 @@ import { IssueExplanation } from '@curbcut/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BudgetExceededError,
+  OutputTruncatedError,
   RefusalError,
   ReplayMissError,
   StructuredOutputError,
@@ -172,6 +173,26 @@ describe('createProvider', () => {
       expect((err as StructuredOutputError).output).toBe('{"whatsWrong": ""}');
       expect(send).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('does not repair an answer cut off at max_tokens', async () => {
+    const { send } = fakeSend(message('{"whatsWrong": "The im', { stop_reason: 'max_tokens' }));
+    const ledger = createMemoryLedger();
+    await expect(
+      live(send, ledger).generateObject(
+        { ...request, maxTokens: 500, schema: IssueExplanation },
+        context,
+      ),
+    ).rejects.toThrow(OutputTruncatedError);
+    expect(send).toHaveBeenCalledOnce();
+    expect(ledger.records).toHaveLength(1);
+  });
+
+  it('refuses a model it has no price for before calling the API', async () => {
+    const { send } = fakeSend(message('hi'));
+    const unknown = { ...request, model: 'claude-unknown' } as unknown as LLMRequest;
+    await expect(live(send).createMessage(unknown, context)).rejects.toThrow(/No pricing/);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('throws on a refusal, after recording its usage', async () => {

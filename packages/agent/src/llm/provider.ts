@@ -4,9 +4,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
-import { BudgetExceededError, RefusalError, StructuredOutputError } from './errors';
+import {
+  BudgetExceededError,
+  OutputTruncatedError,
+  RefusalError,
+  StructuredOutputError,
+} from './errors';
 import type { UsageLedger } from './ledger';
-import { costUsd, type ModelId, type TokenUsage } from './pricing';
+import { costUsd, isKnownModel, type ModelId, type TokenUsage } from './pricing';
 import { replaying, saveRecording, type LLMMode, type SendMessage } from './replay';
 
 export interface LLMRequest {
@@ -60,7 +65,10 @@ export interface ProviderOptions {
   recordingsDir?: string;
   /** Default: `LLM_MONTHLY_BUDGET_USD`, else 20. */
   monthlyBudgetUsd?: number;
-  /** Per request attempt. The SDK retries timeouts too. */
+  /**
+   * Per attempt, until the response starts. Calls stream, so a long answer
+   * isn't cut off by it. The SDK retries timeouts too.
+   */
   timeoutMs?: number;
   /** SDK retries for 408, 409, 429, 5xx and connection errors. */
   maxRetries?: number;
@@ -169,7 +177,9 @@ export function createProvider(options: ProviderOptions): LLMProvider {
       timeout: options.timeoutMs ?? 120_000,
       maxRetries: options.maxRetries ?? 2,
     });
-    send = (params, { signal }) => client.messages.create(params, { signal });
+    // Streaming, so the timeout only covers the wait for the response to
+    // start and a long answer isn't abandoned after it's been paid for.
+    send = (params, { signal }) => client.messages.stream(params, { signal }).finalMessage();
   }
 
   async function call(
@@ -184,6 +194,8 @@ export function createProvider(options: ProviderOptions): LLMProvider {
       if (spentUsd >= budgetUsd) throw new BudgetExceededError(spentUsd, budgetUsd);
     }
     const params = buildParams(request, format);
+    // Checked before sending: a model with no price can't be charged afterwards.
+    if (!isKnownModel(params.model)) throw new Error(`No pricing for model ${params.model}`);
     const message = await send(params, { signal: context.signal });
     const usage = tokenUsage(message.usage);
     const cost = mode === 'replay' ? 0 : costUsd(params.model, usage);
@@ -221,6 +233,10 @@ export function createProvider(options: ProviderOptions): LLMProvider {
         const result = await call({ ...request, messages }, context, format);
         usage = usage ? addUsage(usage, result.usage) : result.usage;
         cost += result.costUsd;
+        // Repairing a cut-off answer under the same limit would be cut off again.
+        if (result.message.stop_reason === 'max_tokens') {
+          throw new OutputTruncatedError(request.maxTokens ?? DEFAULT_MAX_TOKENS);
+        }
         const text = result.message.content
           .flatMap((block) => (block.type === 'text' ? [block.text] : []))
           .join('');

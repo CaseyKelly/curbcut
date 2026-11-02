@@ -24,10 +24,20 @@ export function startOfMonthUtc(now = new Date()): Date {
 }
 
 /**
- * Charges each call to its `agent_runs` row and the run's scan, and sums
- * `agent_runs.cost_usd` for the month. A run is counted in the month it
- * started. Eval runs (#14) join the sum when `eval_runs` exists.
+ * LLM spend since the start of the UTC month: `agent_runs.cost_usd`, with
+ * each run counted in the month it started. Every database ledger uses this,
+ * so the budget sees all spend; eval runs (#14) join the sum when `eval_runs`
+ * exists.
  */
+export async function monthToDateSpendUsd(db: Db): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<string>`coalesce(sum(${agentRuns.costUsd}), 0)` })
+    .from(agentRuns)
+    .where(gte(agentRuns.createdAt, startOfMonthUtc()));
+  return Number(row?.total ?? 0);
+}
+
+/** Charges each call to its `agent_runs` row and the run's scan. */
 export function createDbLedger(db: Db): UsageLedger {
   return {
     async record({ runId, inputTokens, outputTokens, costUsd }) {
@@ -54,13 +64,7 @@ export function createDbLedger(db: Db): UsageLedger {
       });
     },
 
-    async monthToDateSpendUsd() {
-      const [row] = await db
-        .select({ total: sql<string>`coalesce(sum(${agentRuns.costUsd}), 0)` })
-        .from(agentRuns)
-        .where(gte(agentRuns.createdAt, startOfMonthUtc()));
-      return Number(row?.total ?? 0);
-    },
+    monthToDateSpendUsd: () => monthToDateSpendUsd(db),
   };
 }
 
