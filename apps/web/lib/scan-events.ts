@@ -27,7 +27,8 @@ export interface ScanEventOptions {
   /**
    * Ends the stream after this long without `done`, so a scan that never
    * finishes doesn't hold a connection forever. The browser reconnects and
-   * gets the current state again.
+   * gets the current state again. A timer enforces it, so a database read
+   * that never settles can't keep the stream open past it.
    */
   maxMs?: number;
   /** Consecutive failed polls before the stream gives up and lets the browser reconnect. */
@@ -48,7 +49,9 @@ export function scanEventStream(
     signal,
     pollMs = 500,
     keepAliveMs = 15_000,
-    maxMs = 10 * 60_000,
+    // Under the 300 s Vercel allows a function by default, so the stream ends
+    // cleanly here rather than as a function timeout.
+    maxMs = 270_000,
     maxFailures = 20,
     log = (message, err) => console.error(message, err),
   }: ScanEventOptions,
@@ -68,6 +71,7 @@ export function scanEventStream(
         if (closed) return;
         closed = true;
         clearTimeout(timer);
+        clearTimeout(deadline);
         signal.removeEventListener('abort', close);
         try {
           controller.close();
@@ -76,6 +80,8 @@ export function scanEventStream(
         }
       };
       stop = close;
+      // Not tied to the poll loop: see `maxMs`.
+      const deadline = setTimeout(close, maxMs);
       const send = (chunk: Uint8Array) => {
         controller.enqueue(chunk);
         lastSentAt = Date.now();
@@ -113,7 +119,6 @@ export function scanEventStream(
           log('scan events: poll failed', err);
           if (++failures >= maxFailures) return close();
         }
-        if (Date.now() - startedAt >= maxMs) return close();
         timer = setTimeout(() => void tick(), pollMs);
       };
 

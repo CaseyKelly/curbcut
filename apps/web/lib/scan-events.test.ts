@@ -164,7 +164,7 @@ describe('scanEventStream', () => {
     ctrl.abort();
   });
 
-  it('keeps going through a failed poll, then gives up after too many in a row', async () => {
+  it('keeps going through failed polls, and only gives up after maxFailures in a row', async () => {
     const scan = fakeScan(view('queued'));
     const log = vi.fn();
     let failing = true;
@@ -180,17 +180,27 @@ describe('scanEventStream', () => {
         log,
       }),
     );
+    // Two failures: one short of giving up.
     await vi.advanceTimersByTimeAsync(500);
     expect(out.ended).toBe(false);
+    expect(log).toHaveBeenCalledTimes(2);
+
+    // A success resets the count.
     failing = false;
     await vi.advanceTimersByTimeAsync(500);
     expect(scanViews(out.text).map((v) => v.stage)).toEqual(['queued']);
 
-    // Failures only count when they're consecutive.
+    // Two more failures would make three in total, which must not end the
+    // stream now that a poll succeeded in between.
     failing = true;
-    await vi.advanceTimersByTimeAsync(1_500);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(out.ended).toBe(false);
+    expect(log).toHaveBeenCalledTimes(3);
+
+    // The third in a row does.
+    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(500);
     expect(out.ended).toBe(true);
-    expect(log).toHaveBeenCalled();
   });
 
   it('ends after maxMs without done, so the browser reconnects', async () => {
@@ -205,6 +215,40 @@ describe('scanEventStream', () => {
     await vi.advanceTimersByTimeAsync(3_500);
     expect(out.ended).toBe(true);
     expect(out.text).not.toContain('event: done');
+  });
+
+  it('ends at maxMs even when a read never settles', async () => {
+    const out = collect(
+      scanEventStream(
+        {
+          signature: () => new Promise<string | null>(() => {}),
+          load: () => new Promise<ScanView | null>(() => {}),
+        },
+        { signal: new AbortController().signal, pollMs: 500, maxMs: 3_000 },
+      ),
+    );
+    await vi.advanceTimersByTimeAsync(2_900);
+    expect(out.ended).toBe(false);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(out.ended).toBe(true);
+    expect(out.text).not.toContain('event: done');
+  });
+
+  it('does not send a late answer after the stream has ended', async () => {
+    let answer: (value: string | null) => void = () => {};
+    const source: ScanEventSource = {
+      signature: () => new Promise<string | null>((resolve) => (answer = resolve)),
+      load: vi.fn(() => Promise.resolve(view('scanning'))),
+    };
+    const out = collect(
+      scanEventStream(source, { signal: new AbortController().signal, maxMs: 1_000 }),
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(out.ended).toBe(true);
+    answer('v1');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(source.load).not.toHaveBeenCalled();
+    expect(scanViews(out.text)).toHaveLength(0);
   });
 
   it('sends nothing for a request that is already aborted', async () => {
