@@ -55,7 +55,9 @@ Workspace packages export TypeScript source directly. Next.js compiles them via
 
 - **`packages/core` is the contract.** Every shared shape is a Zod schema there, exported with
   its inferred type under the same name, and objects are strict. Don't redefine these shapes
-  elsewhere; import them. A `core` change needs review from whoever didn't write it.
+  elsewhere; import them. The one exception is derived data that is never parsed or stored, like
+  `IssueGroup` (what `groupIssues` returns): a generic interface that wraps the caller's rows.
+  A `core` change needs review from whoever didn't write it.
 - **Human approval gates writes.** `apply_patch` and `open_pr` must refuse to run without an
   approval record the model can't create. Never add a path around that.
 - **Secrets never reach a prompt.** Respect the file denylist and the redaction step; GitHub

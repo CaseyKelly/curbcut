@@ -7,8 +7,10 @@ import {
   EXPLAIN_MODEL,
   EXPLAIN_PROMPT_VERSION,
   explainGroup,
+  findCachedExplanation,
   OutputTruncatedError,
   RefusalError,
+  ReplayMissError,
   StructuredOutputError,
   type LLMProvider,
 } from '@curbcut/agent';
@@ -16,7 +18,7 @@ import { ExplainJobPayload, groupIssues } from '@curbcut/core';
 import { agentRuns, issues, scans, type Db } from '@curbcut/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { PermanentError } from '../errors';
-import type { Job, Tx } from '../queue';
+import { LostJobError, type Job, type Tx } from '../queue';
 import type { JobHandler } from './types';
 
 export interface ExplainJobOptions {
@@ -33,39 +35,49 @@ function scanIdOf(job: Job): string {
   return payload.data.scanId;
 }
 
-/** Output the model got wrong for one group: skip the group, keep the rest. */
-const isGroupFailure = (err: unknown) =>
-  err instanceof StructuredOutputError ||
-  err instanceof OutputTruncatedError ||
-  err instanceof RefusalError;
+/** What an error from explaining one group says about the rest of the job. */
+type Failure = 'group' | 'permanent' | 'transient';
 
 /**
- * Runs `fn` over every item, `limit` at a time, and returns the errors rather
- * than stopping at the first: one group's failure shouldn't leave the rest
- * unexplained, least of all groups the cache can serve for free. Only an
- * abort stops it early.
+ * The model's output, or an HTTP error about this group's input (400, 413,
+ * 422), is the group's problem: skip it and carry on. A bad key or model
+ * (401, 403, 404), a spent budget, or a missing recording is the job's, and a
+ * retry can't fix it. Anything else (a dropped connection, a timeout, 429,
+ * 5xx) may pass, so the queue retries the job.
+ */
+function classify(err: unknown): Failure {
+  if (
+    err instanceof StructuredOutputError ||
+    err instanceof OutputTruncatedError ||
+    err instanceof RefusalError
+  ) {
+    return 'group';
+  }
+  if (err instanceof BudgetExceededError || err instanceof ReplayMissError) return 'permanent';
+  const status = (err as { status?: unknown } | null)?.status;
+  if (status === 400 || status === 413 || status === 422) return 'group';
+  if (status === 401 || status === 403 || status === 404) return 'permanent';
+  return 'transient';
+}
+
+/**
+ * Runs `fn` over `items`, `limit` at a time. Stops starting new items once
+ * `stop()` is true; those in flight finish, since they're already paid for.
  */
 async function forEachLimited<T>(
   items: readonly T[],
   limit: number,
-  signal: AbortSignal,
+  stop: () => boolean,
   fn: (item: T) => Promise<void>,
-): Promise<unknown[]> {
+): Promise<void> {
   let next = 0;
-  const errors: unknown[] = [];
   const lane = async () => {
-    while (!signal.aborted && next < items.length) {
-      const item = items[next++]!;
-      try {
-        await fn(item);
-      } catch (error) {
-        errors.push(error);
-      }
-    }
+    while (!stop() && next < items.length) await fn(items[next++]!);
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
-  return errors;
 }
+
+const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Longest note stored on a scan. */
 const MAX_NOTE_LENGTH = 500;
@@ -76,17 +88,11 @@ const MAX_NOTE_LENGTH = 500;
 async function markAttemptEnded(tx: Tx, job: Job) {
   const payload = ExplainJobPayload.safeParse(job.payload);
   if (!payload.success) return;
-  // Requeued: back to `pending` with the last error, so the UI can say why
-  // it's retrying. Out of attempts: `failed`, so it stops waiting.
-  await tx
-    .update(scans)
-    .set({
-      explainStatus: job.status === 'failed' ? 'failed' : 'pending',
-      explainError: job.error,
-    })
-    .where(eq(scans.id, payload.data.scanId));
-  // Either way this attempt's run is over. Its spend stays on the row, so
-  // the budget still counts it.
+  // agent_runs before scans, the same order as the ledger's `record`: this runs
+  // while another worker may be charging a call to the run, and the opposite
+  // order could deadlock the two.
+  // This attempt's run is over either way. Its spend stays on the row, so the
+  // budget still counts it.
   await tx
     .update(agentRuns)
     .set({ status: 'ended', endReason: 'error', endedAt: sql`now()` })
@@ -97,6 +103,15 @@ async function markAttemptEnded(tx: Tx, job: Job) {
         eq(agentRuns.status, 'running'),
       ),
     );
+  // Requeued: back to `pending` with the last error, so the UI can say why
+  // it's retrying. Out of attempts: `failed`, so it stops waiting.
+  await tx
+    .update(scans)
+    .set({
+      explainStatus: job.status === 'failed' ? 'failed' : 'pending',
+      explainError: job.error,
+    })
+    .where(eq(scans.id, payload.data.scanId));
 }
 
 export function explainJob(
@@ -112,12 +127,10 @@ export function explainJob(
 
       const groups = groupIssues(await db.select().from(issues).where(eq(issues.scanId, scanId)));
 
+      // Lock order is agent_runs, then scans, as in the ledger's `record`, so
+      // this can't deadlock with a call being charged.
       let runId = '';
       await write(async (tx) => {
-        await tx
-          .update(scans)
-          .set({ explainStatus: 'running', explainError: null })
-          .where(eq(scans.id, scanId));
         const [run] = await tx
           .insert(agentRuns)
           .values({
@@ -128,42 +141,76 @@ export function explainJob(
           })
           .returning({ id: agentRuns.id });
         runId = run!.id;
+        await tx
+          .update(scans)
+          .set({ explainStatus: 'running', explainError: null })
+          .where(eq(scans.id, scanId));
       });
 
-      let cachedGroups = 0;
+      /** Linked as each group is explained, so the UI fills in as results arrive. */
+      const link = (groupKey: string, explanationId: string) =>
+        write(async (tx) => {
+          await tx
+            .update(issues)
+            .set({ explanationId })
+            .where(and(eq(issues.scanId, scanId), eq(issues.groupKey, groupKey)));
+        });
+
+      // Cached groups first: free, and they work with the budget spent or the
+      // API down, so whatever happens next they're explained.
+      const uncached: typeof groups = [];
+      for (const group of groups) {
+        signal.throwIfAborted();
+        const explanationId = await findCachedExplanation({ db }, group.issues);
+        if (explanationId) await link(group.groupKey, explanationId);
+        else uncached.push(group);
+      }
+      const cachedGroups = groups.length - uncached.length;
+
+      // Then the model. The first error that affects the whole job stops new
+      // calls: with a bad key or a down API, every remaining group would only
+      // fail the same way, and a hung call can take 10 minutes.
       const skipped: string[] = [];
-      const errors = await forEachLimited(groups, concurrency, signal, async (group) => {
-        try {
-          const result = await explainGroup({ db, provider }, group.issues, { runId, signal });
-          if (result.cached) cachedGroups++;
-          // Linked as each group finishes, so the UI fills in as results arrive
-          // and a retry doesn't pay again for what already worked.
-          await write(async (tx) => {
-            await tx
-              .update(issues)
-              .set({ explanationId: result.explanationId })
-              .where(and(eq(issues.scanId, scanId), eq(issues.groupKey, group.groupKey)));
-          });
-        } catch (err) {
-          // Collected by the pool and decided on once every group has run.
-          if (!isGroupFailure(err)) throw err;
-          skipped.push(group.groupKey);
-          log(`explain: skipped ${group.groupKey} for scan ${scanId}: ${String(err)}`);
-        }
-      });
+      let stopped: Error | undefined;
+      await forEachLimited(
+        uncached,
+        concurrency,
+        () => stopped !== undefined || signal.aborted,
+        async (group) => {
+          try {
+            const result = await explainGroup({ db, provider }, group.issues, { runId, signal });
+            await link(group.groupKey, result.explanationId);
+          } catch (err) {
+            // Without a lock the answer isn't ours to store, and more calls are waste.
+            if (err instanceof LostJobError) {
+              stopped ??= err;
+              return;
+            }
+            const failure = classify(err);
+            if (failure === 'group') {
+              skipped.push(group.groupKey);
+              log(`explain: skipped ${group.groupKey} for scan ${scanId}: ${String(err)}`);
+            } else {
+              stopped ??=
+                failure === 'permanent'
+                  ? new PermanentError(describe(err))
+                  : err instanceof Error
+                    ? err
+                    : new Error(describe(err));
+            }
+          }
+        },
+      );
       signal.throwIfAborted();
-      // Every group has had its turn by now. A spent budget can't be fixed by
-      // retrying this month; anything else (a dropped connection) can.
-      const budget = errors.find((e) => e instanceof BudgetExceededError);
-      if (budget) throw new PermanentError(budget.message);
-      if (errors.length > 0) throw errors[0];
+      if (stopped !== undefined) throw stopped;
 
       log(
         `explain: scan ${scanId}: ${groups.length} groups, ${cachedGroups} from cache, ${skipped.length} skipped`,
       );
 
-      // Skipped groups aren't retried: the model would likely fail the same way,
-      // and each try costs money. If nothing at all was explained, say so.
+      // The job doesn't retry for skipped groups, since the model would likely
+      // fail the same way. (If another group's error does retry it, they're
+      // asked again until #55 remembers failures.) If nothing was explained, say so.
       const nothingExplained = groups.length > 0 && skipped.length === groups.length;
       const note =
         skipped.length > 0

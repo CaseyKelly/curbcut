@@ -1,8 +1,8 @@
 // The prompt that explains one group of issues (#7). Prompts are versioned in
-// code: change the text or the message layout and you must bump
-// `EXPLAIN_PROMPT_VERSION` too, because the version is stored on each
-// explanation and is part of its cache key. `explain.test.ts` pins a hash of
-// both so forgetting fails CI.
+// code: change the text, the message layout, or `IssueExplanation` (cached
+// rows must still parse as it) and you must bump `EXPLAIN_PROMPT_VERSION`
+// too, because the version is stored on each explanation and is part of its
+// cache key. `explain.test.ts` pins a hash of all three so forgetting fails CI.
 import { createHash } from 'node:crypto';
 import { MODELS } from '../llm/pricing';
 import { redactHtml } from './redact';

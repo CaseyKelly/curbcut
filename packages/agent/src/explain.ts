@@ -35,6 +35,17 @@ async function findCached(db: Db, cacheKey: string) {
 }
 
 /**
+ * The cached explanation for these issues, if there is one. Free and never
+ * calls the model, so it works with the monthly budget spent.
+ */
+export async function findCachedExplanation(
+  { db }: { db: Db },
+  issues: readonly ExplainableIssue[],
+): Promise<string | undefined> {
+  return (await findCached(db, explainCacheKey(explainInput(issues))))?.id;
+}
+
+/**
  * Explains the issues of one rule: returns the cached explanation if there is
  * one, otherwise asks the model once and caches the answer. The cache key is
  * rule + a hash of the prompt input (the elements' HTML and failure

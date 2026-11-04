@@ -19,7 +19,7 @@ import { agentRuns, createDb, explanations, issues, scans, type Db } from '@curb
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PermanentError } from '../errors';
-import type { Job } from '../queue';
+import { LostJobError, type Job } from '../queue';
 import { explainJob, explainUnavailableJob } from './explain';
 
 const explanationJson = JSON.stringify({
@@ -310,23 +310,95 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     expect(rows.find((r) => r.ruleId === small)!.explanationId).not.toBeNull();
   });
 
-  it('still explains the other groups after one fails with a transient error', async () => {
-    const [a, b] = [newRule('a'), newRule('b')];
+  /** An HTTP error from the API, as the SDK throws it. */
+  const apiError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
+
+  /** Three uncached groups, biggest first, so one at a time they're asked in a known order. */
+  async function threeGroups() {
+    const [a, b, c] = [newRule('a'), newRule('b'), newRule('c')];
     const scanId = await newScan([
-      { ruleId: a, count: 2 },
-      { ruleId: b, count: 1 },
+      { ruleId: a, count: 3 },
+      { ruleId: b, count: 2 },
+      { ruleId: c, count: 1 },
     ]);
-    const { handler } = setup(
+    return { a, b, c, scanId };
+  }
+
+  it('links the cached groups even when a call then fails, and stops there', async () => {
+    const [cachedRule, a, b] = [newRule('cached'), newRule('a'), newRule('b')];
+    const html = '<img src="cached2.png">';
+    await run(setup(answers).handler, await newScan([{ ruleId: cachedRule, count: 1, html }]));
+    const scanId = await newScan([
+      { ruleId: a, count: 3 },
+      { ruleId: b, count: 2 },
+      { ruleId: cachedRule, count: 1, html },
+    ]);
+    const { sent, handler } = setup(() => Promise.reject(new Error('socket hang up')), {
+      concurrency: 1,
+    });
+    await expect(run(handler, scanId)).rejects.toThrow('socket hang up');
+    // One call, then no more: the rest would fail the same way.
+    expect(sent).toHaveBeenCalledTimes(1);
+    const rows = await issuesOf(scanId);
+    expect(rows.find((r) => r.ruleId === cachedRule)!.explanationId).not.toBeNull();
+    expect(rows.find((r) => r.ruleId === a)!.explanationId).toBeNull();
+  });
+
+  it('fails permanently on the first auth error, without calling for every group', async () => {
+    const { scanId } = await threeGroups();
+    const { sent, handler } = setup(() => Promise.reject(apiError(401)), { concurrency: 1 });
+    await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails permanently when the model or endpoint is not found', async () => {
+    const { scanId } = await threeGroups();
+    const { handler } = setup(() => Promise.reject(apiError(404)), { concurrency: 1 });
+    await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+  });
+
+  it('skips a group the API rejects as bad input, and explains the rest', async () => {
+    const { a, b, c, scanId } = await threeGroups();
+    const { sent, handler } = setup(
       (params) =>
         JSON.stringify(params.messages).includes(a)
-          ? Promise.reject(new Error('socket hang up'))
+          ? Promise.reject(apiError(400))
           : Promise.resolve(reply(explanationJson)),
       { concurrency: 1 },
     );
-    await expect(run(handler, scanId)).rejects.toThrow('socket hang up');
+    await run(handler, scanId);
+    expect(sent).toHaveBeenCalledTimes(3);
     const rows = await issuesOf(scanId);
     expect(rows.find((r) => r.ruleId === a)!.explanationId).toBeNull();
     expect(rows.find((r) => r.ruleId === b)!.explanationId).not.toBeNull();
+    expect(rows.find((r) => r.ruleId === c)!.explanationId).not.toBeNull();
+    expect((await scanOf(scanId)).explainError).toContain(`1 of 3 groups couldn't be explained`);
+  });
+
+  it('retries on a rate limit or server error instead of failing for good', async () => {
+    for (const status of [429, 500, 529]) {
+      const { scanId } = await threeGroups();
+      const { sent, handler } = setup(() => Promise.reject(apiError(status)), { concurrency: 1 });
+      await expect(run(handler, scanId)).rejects.not.toBeInstanceOf(PermanentError);
+      expect(sent).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('stops calling the model once the job has lost its lock', async () => {
+    const { scanId } = await threeGroups();
+    const { sent, handler } = setup(answers, { concurrency: 1 });
+    // The first write (the run's start) works; every write after it finds the lock gone.
+    let writes = 0;
+    await expect(
+      handler.run(jobFor(scanId), {
+        signal: new AbortController().signal,
+        write: (fn) => {
+          if (++writes > 1) return Promise.reject(new LostJobError('lost'));
+          return db.transaction(fn);
+        },
+      }),
+    ).rejects.toBeInstanceOf(LostJobError);
+    expect(sent).toHaveBeenCalledTimes(1);
   });
 
   it('lets a transient error through for the queue to retry, and ends the attempt’s run', async () => {
