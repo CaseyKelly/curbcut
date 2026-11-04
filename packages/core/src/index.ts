@@ -77,6 +77,61 @@ export type A11yIssue = z.infer<typeof A11yIssue>;
 export const ScanJobPayload = z.strictObject({ scanId: z.uuid() });
 export type ScanJobPayload = z.infer<typeof ScanJobPayload>;
 
+/** `jobs.payload` for an `explain` job: the scan job enqueues it when a scan finds issues (#7). */
+export const ExplainJobPayload = z.strictObject({ scanId: z.uuid() });
+export type ExplainJobPayload = z.infer<typeof ExplainJobPayload>;
+
+/**
+ * One rule's issues, with the highest impact among them (#7). A plain generic
+ * interface, not a Zod schema: it's derived by `groupIssues`, never parsed or
+ * stored, and wraps whatever rows the caller has.
+ */
+export interface IssueGroup<T> {
+  groupKey: string;
+  ruleId: string;
+  impact: Impact;
+  count: number;
+  issues: T[];
+}
+
+/**
+ * Groups issues by `groupKey` and orders the groups by impact (critical
+ * first), then count (most first), then rule id, so the order never changes
+ * between reads (#7). axe can rate elements of one rule differently, so a
+ * group takes the highest impact among its issues. Issues keep their order
+ * within a group.
+ */
+export function groupIssues<T extends { groupKey: string; ruleId: string; impact: Impact }>(
+  issues: readonly T[],
+): IssueGroup<T>[] {
+  const groups = new Map<string, IssueGroup<T>>();
+  for (const issue of issues) {
+    const group = groups.get(issue.groupKey);
+    if (!group) {
+      groups.set(issue.groupKey, {
+        groupKey: issue.groupKey,
+        ruleId: issue.ruleId,
+        impact: issue.impact,
+        count: 1,
+        issues: [issue],
+      });
+      continue;
+    }
+    group.count++;
+    group.issues.push(issue);
+    if (Impact.options.indexOf(issue.impact) > Impact.options.indexOf(group.impact)) {
+      group.impact = issue.impact;
+    }
+  }
+  const rank = (g: IssueGroup<T>) => Impact.options.indexOf(g.impact);
+  return [...groups.values()].sort(
+    (a, b) =>
+      rank(b) - rank(a) ||
+      b.count - a.count ||
+      (a.groupKey < b.groupKey ? -1 : a.groupKey > b.groupKey ? 1 : 0),
+  );
+}
+
 /** Plain-language explanation of an issue group, produced by the model (#7). */
 export const IssueExplanation = z.strictObject({
   whatsWrong: z.string().min(1),

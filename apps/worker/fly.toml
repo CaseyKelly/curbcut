@@ -2,7 +2,7 @@
 #   fly deploy . --config apps/worker/fly.toml --dockerfile apps/worker/Dockerfile
 # The Dockerfile is passed on the command line, relative to the root, rather
 # than set here, where it's easy to misread which directory it's relative to.
-# Secrets: fly secrets set DATABASE_URL=... --config apps/worker/fly.toml
+# Secrets: fly secrets set DATABASE_URL=... ANTHROPIC_API_KEY=... --config apps/worker/fly.toml
 app = 'curbcut-worker'
 primary_region = 'iad'
 # On SIGINT the worker aborts the job in hand and puts it back in the queue

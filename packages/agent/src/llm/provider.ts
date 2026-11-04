@@ -185,6 +185,11 @@ export function createProvider(options: ProviderOptions): LLMProvider {
   } else if (options.send) {
     send = options.send;
   } else {
+    // The SDK only complains about a missing key on the first request, which
+    // could be a long way from the deploy that forgot to set it.
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+      throw new Error(`LLM_MODE=${mode} needs ANTHROPIC_API_KEY`);
+    }
     const client = new Anthropic({
       timeout: options.timeoutMs ?? 120_000,
       maxRetries: options.maxRetries ?? 2,

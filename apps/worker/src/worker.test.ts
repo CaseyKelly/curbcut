@@ -6,7 +6,7 @@
 // tests never assert that the queue is empty.
 import type { A11yIssue } from '@curbcut/core';
 import { createDb, issues, jobs, scans, type Db } from '@curbcut/db';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { UnsafeUrlError } from './errors';
 import { scanJob } from './jobs/scan';
@@ -45,7 +45,13 @@ describe.skipIf(!process.env.DATABASE_URL)('worker', () => {
   afterAll(async () => {
     if (!db) return;
     if (jobIds.length) await db.delete(jobs).where(inArray(jobs.id, jobIds));
-    if (scanIds.length) await db.delete(scans).where(inArray(scans.id, scanIds));
+    if (scanIds.length) {
+      // The scan job queues these; nothing here runs them.
+      await db
+        .delete(jobs)
+        .where(and(eq(jobs.type, 'explain'), inArray(sql`${jobs.payload}->>'scanId'`, scanIds)));
+      await db.delete(scans).where(inArray(scans.id, scanIds));
+    }
     await db.$client.end();
   });
 
@@ -242,6 +248,39 @@ describe.skipIf(!process.env.DATABASE_URL)('worker', () => {
         ['button-name', 'button-name'],
         ['image-alt', 'image-alt'],
       ]);
+    });
+
+    const explainJobsFor = (scanId: string) =>
+      db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.type, 'explain'), sql`${jobs.payload}->>'scanId' = ${scanId}`));
+
+    it('queues an explain job with the scan it explains', async () => {
+      const { scanId, jobId } = await newScanJob();
+      const worker = workerWith(() =>
+        Promise.resolve({ issues: [issue('image-alt', 'fp-1')], axeVersion: '4.11.0' }),
+      );
+      expect(await runOnce(worker, jobId)).toMatchObject({ status: 'succeeded' });
+      const queued = await explainJobsFor(scanId);
+      expect(queued).toHaveLength(1);
+      expect(queued[0]).toMatchObject({ status: 'queued', payload: { scanId } });
+      expect(await scanOf(scanId)).toMatchObject({ explainStatus: 'pending', explainError: null });
+    });
+
+    it('queues no explain job for a scan with no issues', async () => {
+      const { scanId, jobId } = await newScanJob();
+      const worker = workerWith(() => Promise.resolve({ issues: [], axeVersion: '4.11.0' }));
+      expect(await runOnce(worker, jobId)).toMatchObject({ status: 'succeeded' });
+      expect(await scanOf(scanId)).toMatchObject({ status: 'completed', explainStatus: null });
+      expect(await explainJobsFor(scanId)).toHaveLength(0);
+    });
+
+    it('queues no explain job when the scan fails', async () => {
+      const { scanId, jobId } = await newScanJob();
+      const worker = workerWith(() => Promise.reject(new UnsafeUrlError('private address')));
+      await runOnce(worker, jobId);
+      expect(await explainJobsFor(scanId)).toHaveLength(0);
     });
 
     it('fails the scan at once when the URL is unsafe', async () => {

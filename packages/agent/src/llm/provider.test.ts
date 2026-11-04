@@ -287,6 +287,25 @@ describe('createProvider', () => {
     }
   });
 
+  it('needs an API key to call the API, and says so at startup', () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
+    try {
+      const ledger = createMemoryLedger();
+      expect(() => createProvider({ ledger, mode: 'live' })).toThrow(/needs ANTHROPIC_API_KEY/);
+      expect(() => createProvider({ ledger, mode: 'record', recordingsDir: dir })).toThrow(
+        /needs ANTHROPIC_API_KEY/,
+      );
+      // Replay never creates a client, and a stubbed API needs no key.
+      expect(() => createProvider({ ledger, mode: 'replay', recordingsDir: dir })).not.toThrow();
+      expect(() => createProvider({ ledger, mode: 'live', send: vi.fn() })).not.toThrow();
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
+      expect(() => createProvider({ ledger, mode: 'live' })).not.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('defaults to replay outside production', () => {
     vi.stubEnv('LLM_MODE', '');
     vi.stubEnv('NODE_ENV', 'test');
