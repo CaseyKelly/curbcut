@@ -23,6 +23,14 @@ export class StructuredOutputError extends Error {
   }
 }
 
+/** A call ran past `callTimeoutMs`, retries included, and was aborted. Nothing was charged. */
+export class CallTimeoutError extends Error {
+  override name = 'CallTimeoutError';
+  constructor(readonly timeoutMs: number) {
+    super(`LLM call took longer than ${timeoutMs} ms and was aborted`);
+  }
+}
+
 /** A structured answer was cut off at `max_tokens`, so it wasn't sent for repair. */
 export class OutputTruncatedError extends Error {
   override name = 'OutputTruncatedError';

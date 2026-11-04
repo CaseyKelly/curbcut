@@ -6,6 +6,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import {
   BudgetExceededError,
+  CallTimeoutError,
   OutputTruncatedError,
   RefusalError,
   StructuredOutputError,
@@ -70,6 +71,11 @@ export interface ProviderOptions {
    * isn't cut off by it. The SDK retries timeouts too.
    */
   timeoutMs?: number;
+  /**
+   * The most a call may take, retries included. Once a stream has started,
+   * nothing else bounds it, and a stalled one would otherwise never end.
+   */
+  callTimeoutMs?: number;
   /** SDK retries for 408, 409, 429, 5xx and connection errors. */
   maxRetries?: number;
   /** Replaces the Anthropic client in live and record modes. For tests. */
@@ -177,9 +183,22 @@ export function createProvider(options: ProviderOptions): LLMProvider {
       timeout: options.timeoutMs ?? 120_000,
       maxRetries: options.maxRetries ?? 2,
     });
+    const callTimeoutMs = options.callTimeoutMs ?? 600_000;
     // Streaming, so the timeout only covers the wait for the response to
-    // start and a long answer isn't abandoned after it's been paid for.
-    send = (params, { signal }) => client.messages.stream(params, { signal }).finalMessage();
+    // start and a long answer isn't abandoned after it's been paid for. The
+    // deadline bounds the rest. Pings don't reach the stream's listeners, so
+    // a deadline is safer than an idle timer during long silent thinking.
+    send = async (params, { signal }) => {
+      const deadline = AbortSignal.timeout(callTimeoutMs);
+      try {
+        return await client.messages
+          .stream(params, { signal: signal ? AbortSignal.any([signal, deadline]) : deadline })
+          .finalMessage();
+      } catch (err) {
+        if (deadline.aborted && !signal?.aborted) throw new CallTimeoutError(callTimeoutMs);
+        throw err;
+      }
+    };
   }
 
   async function call(
