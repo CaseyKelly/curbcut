@@ -2,8 +2,12 @@
 
 import { useEffect } from 'react';
 
-/** Shown when a page fails to load, such as when the database is unreachable (#8). */
-export default function ErrorPage({ error, reset }: { error: Error; reset: () => void }) {
+/**
+ * Shown when a page fails to load, such as when the database is unreachable
+ * (#8). `retry` fetches the page again; `reset` would only re-render the failed
+ * result, so the error would stay up after the database came back.
+ */
+export default function ErrorPage({ error, retry }: { error: Error; retry: () => void }) {
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -17,7 +21,7 @@ export default function ErrorPage({ error, reset }: { error: Error; reset: () =>
       </p>
       <button
         type="button"
-        onClick={reset}
+        onClick={() => retry()}
         className="mt-6 rounded-md border border-neutral-900 px-4 py-2 font-medium hover:bg-neutral-100"
       >
         Try again

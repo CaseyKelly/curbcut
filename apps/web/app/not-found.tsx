@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { linkClass } from '@/lib/ui';
 
 export const metadata: Metadata = { title: 'Not found · Curbcut' };
 
@@ -12,7 +13,7 @@ export default function NotFound() {
         this.
       </p>
       <p className="mt-4">
-        <Link href="/" className="text-blue-800 underline hover:no-underline">
+        <Link href="/" className={linkClass}>
           Scan a page
         </Link>
       </p>

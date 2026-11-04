@@ -5,6 +5,7 @@ import { ScanLive } from '@/components/scan-live';
 import { getDb } from '@/lib/db';
 import { loadScanView } from '@/lib/scan-queries';
 import { requireUser } from '@/lib/session';
+import { linkClass } from '@/lib/ui';
 
 export const metadata: Metadata = { title: 'Scan · Curbcut' };
 
@@ -20,7 +21,7 @@ export default async function ScanPage({ params }: Props) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
       <p>
-        <Link href="/" className="text-blue-800 underline hover:no-underline">
+        <Link href="/" className={linkClass}>
           Scan another page
         </Link>
       </p>
