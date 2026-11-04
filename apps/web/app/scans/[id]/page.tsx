@@ -13,8 +13,8 @@ type Props = { params: Promise<{ id: string }> };
 
 /** One scan (#8): its progress, then its issues grouped by rule. */
 export default async function ScanPage({ params }: Props) {
-  await requireUser();
   const { id } = await params;
+  await requireUser(`/scans/${encodeURIComponent(id)}`);
   const view = await loadScanView(getDb(), id);
   if (!view) notFound();
 
