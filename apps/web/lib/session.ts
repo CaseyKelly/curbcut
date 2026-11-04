@@ -16,11 +16,22 @@ export async function currentLogin(): Promise<string | null> {
   return isAllowedLogin(login, allowlistFromEnv()) ? login : null;
 }
 
-/** For pages: returns the allowlisted login or redirects to sign in or away. */
-export async function requireUser(): Promise<string> {
+export interface SignedInUser {
+  login: string;
+  /** Numeric GitHub user id, recorded on scans (#8). */
+  githubId: number;
+}
+
+/**
+ * For pages and server actions: returns the allowlisted user or redirects to
+ * sign in or away. A session from before the id was stored has none, so it
+ * signs in again once.
+ */
+export async function requireUser(): Promise<SignedInUser> {
   const session = await auth();
   const login = session?.user?.login;
-  if (!login) redirect(SIGN_IN_PATH);
+  const githubId = session?.user?.githubId;
+  if (!login || githubId === undefined) redirect(SIGN_IN_PATH);
   if (!isAllowedLogin(login, allowlistFromEnv())) redirect(NOT_AUTHORIZED_PATH);
-  return login;
+  return { login, githubId };
 }

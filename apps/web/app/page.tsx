@@ -1,8 +1,9 @@
 import { signOut } from '@/auth';
+import { ScanForm } from '@/components/scan-form';
 import { requireUser } from '@/lib/session';
 
 export default async function HomePage() {
-  const login = await requireUser();
+  const { login } = await requireUser();
 
   async function signOutAction() {
     'use server';
@@ -15,13 +16,16 @@ export default async function HomePage() {
       <p className="mt-4 text-neutral-700">
         Scan a page for accessibility issues, understand them, and review fixes.
       </p>
-      <form action={signOutAction} className="mt-8 flex items-center gap-4">
+      <div className="mt-8">
+        <ScanForm />
+      </div>
+      <form action={signOutAction} className="mt-12 flex items-center gap-4">
         <p className="text-neutral-700">
           Signed in as <strong>{login}</strong>
         </p>
         <button
           type="submit"
-          className="rounded-md border border-neutral-900 px-3 py-1 font-medium hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+          className="rounded-md border border-neutral-900 px-3 py-1 font-medium hover:bg-neutral-100"
         >
           Sign out
         </button>
