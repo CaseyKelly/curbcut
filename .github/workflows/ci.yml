@@ -61,7 +61,8 @@ jobs:
           fi
       - run: npm run db:migrate
 
-      # Chromium, for the worker's scanner tests and the sample-site scan.
+      # Chromium, for the worker's scanner tests, the sample-site scan, and the
+      # eval harness.
       # Cached per Playwright version. The system libraries live outside the
       # cache, so install them on a hit too.
       - id: playwright
@@ -78,6 +79,9 @@ jobs:
 
       - run: npm run check
       - run: npm run scan:sample-site
+      # Harness self-check, for free: fails if a case's input stops reproducing
+      # its issue, or a reference fix stops passing (#13).
+      - run: npm run evals -- --reference
 
   # The worker image must keep building (#5). Built, not pushed: deploys go
   # through `fly deploy`.

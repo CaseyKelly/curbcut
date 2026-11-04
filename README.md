@@ -108,7 +108,7 @@ Prompt changes have to beat the eval suite, not just look good in a demo. Every 
 | **Quality**        | Is it correct, minimal, and idiomatic React, using native elements before ARIA? (LLM judge, calibrated against hand labels) |
 | **Cost & latency** | What did it cost, and how long did it take?                                                                                 |
 
-**Planned CI tiers ([#17](https://github.com/CaseyKelly/Curbcut/issues/17), not running yet):** a free **replay** tier on every PR, a **smoke** tier when the agent or prompts change, and the **full** suite weekly. Every PR will get a comment with its score diff against `main`. Today, CI runs `npm run check` (format, lint, typecheck, and unit tests) and an axe scan of the sample site against its seeded-issue manifest on every push and PR.
+**Planned CI tiers ([#17](https://github.com/CaseyKelly/Curbcut/issues/17), not running yet):** a free **replay** tier on every PR, a **smoke** tier when the agent or prompts change, and the **full** suite weekly. Every PR will get a comment with its score diff against `main`. Today, CI runs `npm run check` (format, lint, typecheck, and unit tests), an axe scan of the sample site against its seeded-issue manifest, and a self-check of the eval harness on every push and PR.
 
 ## Getting started
 
