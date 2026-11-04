@@ -1,0 +1,30 @@
+# The worker on Fly.io (#5). Deploy from the repo root, which is the build context:
+#   fly deploy . --config apps/worker/fly.toml --dockerfile apps/worker/Dockerfile
+# The Dockerfile is passed on the command line, relative to the root, rather
+# than set here, where it's easy to misread which directory it's relative to.
+# Secrets: fly secrets set DATABASE_URL=... --config apps/worker/fly.toml
+app = 'curbcut-worker'
+primary_region = 'iad'
+# On SIGINT the worker aborts the job in hand and puts it back in the queue
+# without spending an attempt, which takes seconds; this is headroom.
+kill_signal = 'SIGINT'
+kill_timeout = '30s'
+
+[env]
+  NODE_ENV = 'production'
+  PORT = '8080'
+
+# The worker serves nothing publicly, so there is no [http_service]. This
+# machine check is what Fly uses to tell a stuck worker from a healthy one.
+[checks.health]
+  type = 'http'
+  port = 8080
+  path = '/healthz'
+  interval = '30s'
+  timeout = '5s'
+  grace_period = '30s'
+
+# Chromium needs the memory.
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '1gb'

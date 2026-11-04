@@ -73,6 +73,10 @@ export const A11yIssue = z.strictObject({
 });
 export type A11yIssue = z.infer<typeof A11yIssue>;
 
+/** `jobs.payload` for a `scan` job: the web app enqueues it, the worker runs it (#5). */
+export const ScanJobPayload = z.strictObject({ scanId: z.uuid() });
+export type ScanJobPayload = z.infer<typeof ScanJobPayload>;
+
 /** Plain-language explanation of an issue group, produced by the model (#7). */
 export const IssueExplanation = z.strictObject({
   whatsWrong: z.string().min(1),

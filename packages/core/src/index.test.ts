@@ -8,6 +8,7 @@ import {
   IssueExplanation,
   PatchProposal,
   RelativePath,
+  ScanJobPayload,
 } from './index';
 
 const issue: A11yIssue = {
@@ -74,6 +75,18 @@ describe('A11yIssue', () => {
 
   it('rejects unknown keys', () => {
     expect(A11yIssue.safeParse({ ...issue, severity: 'high' }).success).toBe(false);
+  });
+});
+
+describe('ScanJobPayload', () => {
+  it('accepts a scan id', () => {
+    const scanId = '0b6c1f9e-2a4d-4c8e-9f3a-7d5e6b1c2a40';
+    expect(ScanJobPayload.parse({ scanId })).toEqual({ scanId });
+  });
+
+  it('rejects a missing or malformed scan id', () => {
+    expect(ScanJobPayload.safeParse({}).success).toBe(false);
+    expect(ScanJobPayload.safeParse({ scanId: 'scan-1' }).success).toBe(false);
   });
 });
 

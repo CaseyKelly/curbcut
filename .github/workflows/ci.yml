@@ -60,10 +60,10 @@ jobs:
             exit 1
           fi
       - run: npm run db:migrate
-      - run: npm run check
 
-      # Sample-site scan. Chromium is cached per Playwright version. The
-      # system libraries live outside the cache, so install them on a hit too.
+      # Chromium, for the worker's scanner tests and the sample-site scan.
+      # Cached per Playwright version. The system libraries live outside the
+      # cache, so install them on a hit too.
       - id: playwright
         run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
       - id: playwright-cache
@@ -75,4 +75,15 @@ jobs:
         run: npx playwright install --with-deps chromium
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+
+      - run: npm run check
       - run: npm run scan:sample-site
+
+  # The worker image must keep building (#5). Built, not pushed: deploys go
+  # through `fly deploy`.
+  worker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f apps/worker/Dockerfile -t curbcut-worker .
