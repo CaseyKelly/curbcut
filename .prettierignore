@@ -7,3 +7,5 @@ packages/evals/dataset
 fixtures/sample-site/src
 fixtures/sample-site/index.html
 packages/db/drizzle
+packages/evals/.eval-tmp
+packages/evals/reports

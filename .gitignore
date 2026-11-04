@@ -12,3 +12,7 @@ next-env.d.ts
 .DS_Store
 playwright-report/
 test-results/
+
+# Eval runner scratch space and reports (#13)
+packages/evals/.eval-tmp/
+packages/evals/reports/

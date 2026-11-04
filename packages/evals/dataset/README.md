@@ -3,8 +3,13 @@
 Each case is one accessibility issue in one React component, with the outcome the agent should reach. The runner (#13) gives the agent the input file and the issue, then scores what it proposes.
 
 ```bash
-npm run evals:validate   # check every case and the manifest
+npm run evals:validate                 # check every case and the manifest
+npm run evals -- --reference           # check the runner: the reference answers should all pass
+npm run evals -- --rescore <report>    # re-score a saved run, for free
+npm run evals -- --case <id> --case …  # only these cases
 ```
+
+The runner scores each case with (a) resolved, (b) build safe, (c) scoped, and (e) cost and latency, prints a summary table, and writes a JSON report to `packages/evals/reports/` (or `--out`). Scoring (a) needs Chromium: `npx playwright install chromium`. The live fixer, which calls `proposeFix`, arrives with #9.
 
 ## Layout
 
@@ -20,6 +25,7 @@ cases/<id>/
 
 - **`case.json`**: `id` matches the folder. `version` starts at 1 and is bumped whenever the case changes. `framework` is `react` (the only one so far). `filePath` names the file under `input/`. `issue` is the axe violation as the scanner reports it (#5). `expectedOutcome` is `fix`, `no_change_needed`, or `unsure`. `allowedLines` (fix cases only) are the 1-based input lines a fix may touch. Scorer (c) fails a diff outside them, so leave room for other reasonable fixes, not just the reference one.
 - **`input/`**: only the file at `filePath`, nothing else the agent could read. That file is self-contained and default-exports a component taking no props, so the harness can render it on its own. Imports are limited to `react`. Styles are inline, so contrast cases render the same anywhere. Inputs must compile: the bugs are accessibility bugs, not type errors.
+- **`test.tsx`**: a Vitest test, run in jsdom against the patched file, for behaviour axe can't see (the dismiss button still dismisses). It imports the component from `./input/<filePath>`.
 - **`expected/`**: the fix we'd want, which the LLM judge (#15) can compare against. It must hold only `filePath`, and every change must fall inside `allowedLines`. An added line counts as inside when a line next to it is allowed.
 
 ## Outcomes

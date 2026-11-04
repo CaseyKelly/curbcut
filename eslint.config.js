@@ -15,6 +15,8 @@ export default tseslint.config(
       '**/next-env.d.ts',
       // Eval cases contain deliberately broken code.
       'packages/evals/dataset/',
+      // Eval runner scratch space: patched case files, mid-run.
+      'packages/evals/.eval-tmp/',
       // The sample site's pages are full of a11y bugs on purpose. Its config
       // is linted like everything else.
       'fixtures/sample-site/src/',

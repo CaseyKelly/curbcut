@@ -30,6 +30,7 @@ npm run check              # format:check, lint, typecheck, tests (what CI runs)
 npm run format             # fix formatting
 npm test                   # vitest only
 npm run scan:sample-site   # axe scan of fixtures/sample-site against its manifest (CI runs this too)
+npm run evals -- --reference  # eval harness self-check, no LLM calls (CI runs this too)
 ```
 
 Run `npm run check` before calling work done.
