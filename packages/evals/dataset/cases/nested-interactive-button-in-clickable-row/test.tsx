@@ -11,12 +11,15 @@ function render() {
   return container;
 }
 
-/** The control whose text includes `text`. Native ones activate on their own; custom ones take Enter. */
+/**
+ * Activates the innermost control whose text includes `text`: the last match,
+ * as a nested control follows its parent. Native ones click; custom ones take Enter.
+ */
 function activate(container: HTMLElement, text: string) {
   const controls = container.querySelectorAll<HTMLElement>(
     'button, summary, a[href], [role="button"]',
   );
-  const control = [...controls].find((c) => c.textContent?.includes(text));
+  const control = [...controls].findLast((c) => c.textContent?.includes(text));
   if (!control) throw new Error(`no control for "${text}"`);
   act(() => {
     if (control.getAttribute('role') === null) {
