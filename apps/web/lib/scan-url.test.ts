@@ -27,7 +27,8 @@ describe('validateScanUrl', () => {
   it('says what to fix when the text is not a URL', () => {
     expect(error('example.com')).toMatch(/start it with https/i);
     expect(error('not a url')).toMatch(/start it with https/i);
-    expect(error('https://')).toMatch(/web address|website name/i);
+    expect(error('https://')).toMatch(/doesn’t look like a web address/i);
+    expect(error('http://?x')).toMatch(/doesn’t look like a web address/i);
   });
 
   it.each(['javascript:alert(1)', 'data:text/html,hi', 'file:///etc/passwd', 'ftp://example.com'])(
@@ -42,8 +43,19 @@ describe('validateScanUrl', () => {
     expect(error('https://user@example.com/')).toMatch(/username and password/i);
   });
 
-  it('rejects very long input', () => {
+  it('rejects very long input, measured as typed and as stored', () => {
     expect(error(`https://example.com/${'a'.repeat(2_100)}`)).toMatch(/too long/i);
+    // 2,000 typed characters that become 12,000 once percent-encoded.
+    const encoded = `https://e.com/${'é'.repeat(2_000)}`;
+    expect(encoded.length).toBeLessThan(2_048);
+    expect(error(encoded)).toMatch(/too long/i);
+  });
+
+  it('accepts an address of exactly 2,048 characters, as the message says', () => {
+    const exact = `https://example.com/${'a'.repeat(2_048 - 'https://example.com/'.length)}`;
+    expect(exact).toHaveLength(2_048);
+    expect(validateScanUrl(exact).ok).toBe(true);
+    expect(error(`${exact}a`)).toMatch(/at most 2,048/);
   });
 
   it.each([
@@ -65,6 +77,20 @@ describe('validateScanUrl', () => {
     'http://[fe80::1]/',
     'http://[fd00::1]/',
     'http://[::ffff:127.0.0.1]/',
+    // Trailing dot: the same host, kept by the URL parser.
+    'http://localhost./',
+    'http://localhost.:3000/',
+    'http://foo.localhost./',
+    'http://app.localhost../',
+    'http://127.0.0.1./',
+    // On the worker's blocklist: the form shares it.
+    'http://224.0.0.1/',
+    'http://255.255.255.255/',
+    'http://198.18.0.1/',
+    'http://[ff02::1]/',
+    'http://[fec0::1]/',
+    'http://[64:ff9b::7f00:1]/',
+    'http://[::127.0.0.1]/',
   ])('rejects the local or private address %s', (input) => {
     expect(error(input)).toMatch(/public websites/i);
   });
@@ -82,6 +108,7 @@ describe('validateScanUrl', () => {
   });
 
   it('accepts local addresses when private targets are allowed', () => {
+    expect(validateScanUrl('http://localhost.:5173/', { allowPrivate: true }).ok).toBe(true);
     expect(validateScanUrl('http://localhost:5173/', { allowPrivate: true })).toEqual({
       ok: true,
       url: 'http://localhost:5173/',

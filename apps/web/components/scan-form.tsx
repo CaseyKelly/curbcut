@@ -9,7 +9,8 @@ const initial: ScanFormState = { url: '', error: null };
  * The URL form (#8). The browser's own validation is off (`noValidate`) so
  * every mistake gets one of our messages in the same place: tied to the field
  * with `aria-describedby`, announced as an alert, and with focus back in the
- * field.
+ * field. While the scan is being queued a status line says so, and the button
+ * looks inactive without being disabled, which would drop keyboard focus.
  */
 export function ScanForm() {
   const [state, formAction, pending] = useActionState(startScan, initial);
@@ -56,10 +57,14 @@ export function ScanForm() {
       <button
         type="submit"
         aria-disabled={pending}
-        className="mt-4 rounded-md bg-neutral-900 px-4 py-2 font-medium text-white hover:bg-neutral-700"
+        className="mt-4 rounded-md bg-neutral-900 px-4 py-2 font-medium text-white hover:bg-neutral-700 aria-disabled:cursor-wait aria-disabled:bg-neutral-600 aria-disabled:hover:bg-neutral-600"
       >
         {pending ? 'Starting scan…' : 'Scan page'}
       </button>
+      {/* Always rendered, so the text is announced when it appears. */}
+      <p role="status" className="mt-2 text-neutral-700">
+        {pending ? 'Starting the scan. You’ll go to its page in a moment.' : null}
+      </p>
     </form>
   );
 }

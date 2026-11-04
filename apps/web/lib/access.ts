@@ -10,6 +10,16 @@ export const SIGN_IN_PATH = '/sign-in';
 export const NOT_AUTHORIZED_PATH = '/not-authorized';
 
 /**
+ * The sign-in page, carrying where to land afterwards. Auth.js only follows a
+ * same-origin `callbackUrl`, and the sign-in page passes it straight on, so
+ * `returnTo` must be one of our own paths: anything else gets no callback.
+ */
+export function signInPath(returnTo?: string): string {
+  if (!returnTo || !/^\/(?![/\\])/.test(returnTo)) return SIGN_IN_PATH;
+  return `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(returnTo)}`;
+}
+
+/**
  * Parses `ALLOWED_GITHUB_LOGINS` (comma-separated). GitHub logins are
  * case-insensitive, so they're compared lowercased. An unset or empty value
  * allows no one: a missing env var must not open the app.

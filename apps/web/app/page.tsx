@@ -3,7 +3,7 @@ import { ScanForm } from '@/components/scan-form';
 import { requireUser } from '@/lib/session';
 
 export default async function HomePage() {
-  const { login } = await requireUser();
+  const { login } = await requireUser('/');
 
   async function signOutAction() {
     'use server';

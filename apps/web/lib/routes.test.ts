@@ -23,6 +23,31 @@ function entryFiles(dir: string): string[] {
   });
 }
 
+/** Files that export server actions: public endpoints, whatever the proxy matcher says. */
+function actionFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return actionFiles(path);
+    if (!/\.tsx?$/.test(entry.name) || /\.test\./.test(entry.name)) return [];
+    return /^\s*(['"])use server\1/.test(readFileSync(path, 'utf8'))
+      ? [relative(appDir, path)]
+      : [];
+  });
+}
+
+describe('server actions', () => {
+  const files = actionFiles(appDir);
+
+  it('finds the action files', () => {
+    expect(files).toContain('actions.ts');
+  });
+
+  it.each(files)('%s checks the session before doing anything', (file) => {
+    const source = readFileSync(join(appDir, file), 'utf8');
+    expect(source).toMatch(/\b(requireUser|currentLogin)\(/);
+  });
+});
+
 describe('session checks', () => {
   const files = entryFiles(appDir);
 

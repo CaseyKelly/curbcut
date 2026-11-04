@@ -1,4 +1,5 @@
-import { BlockList, isIP } from 'node:net';
+import { isPrivateAddress } from '@curbcut/core/net';
+import { isIP } from 'node:net';
 
 /**
  * Quick checks on a URL typed into the scan form (#8), so an obvious mistake
@@ -8,34 +9,17 @@ import { BlockList, isIP } from 'node:net';
  */
 
 const MAX_LENGTH = 2_048;
+const TOO_LONG = `That address is too long. Use one of at most ${MAX_LENGTH.toLocaleString('en-US')} characters.`;
 
-// Literal addresses only. The URL parser has already turned `2130706433` and
-// `0x7f.1` into `127.0.0.1`, and `[::ffff:7f00:1]` is checked as IPv4.
-const privateAddresses = new BlockList();
-for (const [prefix, bits] of [
-  ['0.0.0.0', 8],
-  ['10.0.0.0', 8],
-  ['100.64.0.0', 10],
-  ['127.0.0.0', 8],
-  ['169.254.0.0', 16],
-  ['172.16.0.0', 12],
-  ['192.168.0.0', 16],
-] as const) {
-  privateAddresses.addSubnet(prefix, bits, 'ipv4');
-}
-for (const [prefix, bits] of [
-  ['::', 128],
-  ['::1', 128],
-  ['fc00::', 7],
-  ['fe80::', 10],
-] as const) {
-  privateAddresses.addSubnet(prefix, bits, 'ipv6');
-}
-
+/**
+ * `localhost` and `*.localhost`, or a literal address on the shared blocklist.
+ * The URL parser has already turned `2130706433` and `0x7f.1` into `127.0.0.1`
+ * and `[::ffff:7f00:1]` is checked as IPv4. A trailing dot (`localhost.`) names
+ * the same host, and the parser keeps it, so it's dropped before comparing.
+ */
 function isLocalHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[(.*)\]$/, '$1');
-  const family = isIP(host);
-  if (family !== 0) return privateAddresses.check(host, family === 4 ? 'ipv4' : 'ipv6');
+  const host = hostname.replace(/^\[(.*)\]$/, '$1').replace(/\.+$/, '');
+  if (isIP(host) !== 0) return isPrivateAddress(host);
   return host === 'localhost' || host.endsWith('.localhost');
 }
 
@@ -61,12 +45,7 @@ export function validateScanUrl(
 ): ScanUrlResult {
   const text = input.trim();
   if (text === '') return { ok: false, error: 'Enter the address of the page to scan.' };
-  if (text.length > MAX_LENGTH) {
-    return {
-      ok: false,
-      error: `That address is too long. Use one under ${MAX_LENGTH} characters.`,
-    };
-  }
+  if (text.length > MAX_LENGTH) return { ok: false, error: TOO_LONG };
 
   let url: URL;
   try {
@@ -80,9 +59,9 @@ export function validateScanUrl(
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { ok: false, error: 'Only http:// and https:// addresses can be scanned.' };
   }
-  if (url.hostname === '') {
-    return { ok: false, error: 'That address has no website name. Check it and try again.' };
-  }
+  // What gets stored and resent is the parsed form, which percent-encodes
+  // non-ASCII characters and can be several times longer than what was typed.
+  if (url.href.length > MAX_LENGTH) return { ok: false, error: TOO_LONG };
   if (url.username || url.password) {
     return { ok: false, error: 'Remove the username and password from the address.' };
   }
