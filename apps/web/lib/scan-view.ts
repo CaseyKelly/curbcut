@@ -53,6 +53,30 @@ export const ScanView = z.strictObject({
 });
 export type ScanView = z.infer<typeof ScanView>;
 
+/**
+ * The body of a `scan` event, or null if it isn't a scan this page can show.
+ * Both handlers parse through here, so a bad payload from the server is
+ * ignored the same way whichever event it arrives on.
+ */
+export function parseScanEvent(data: string): ScanView | null {
+  try {
+    const parsed = ScanView.safeParse(JSON.parse(data));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Why the server ended the stream: `final`, `gone` (the scan was deleted), or null if unreadable. */
+export function parseDoneReason(data: string): 'final' | 'gone' | null {
+  try {
+    const reason = (JSON.parse(data) as { reason?: unknown } | null)?.reason;
+    return reason === 'final' || reason === 'gone' ? reason : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Nothing more will change, so the page can stop listening. */
 export function isFinal(view: Pick<ScanView, 'stage'>): boolean {
   return view.stage === 'done' || view.stage === 'failed';
