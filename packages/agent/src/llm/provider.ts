@@ -35,6 +35,12 @@ export interface LLMResult {
   usage: TokenUsage;
   /** Zero in replay mode: nothing was spent. */
   costUsd: number;
+  /**
+   * What the call costs at current prices, even in replay mode, where it's
+   * priced from the recorded tokens. Evals report it so replayed and live runs
+   * stay comparable; nothing is charged for it.
+   */
+  recordedCostUsd: number;
 }
 
 export interface MessageResult extends LLMResult {
@@ -198,7 +204,8 @@ export function createProvider(options: ProviderOptions): LLMProvider {
     if (!isKnownModel(params.model)) throw new Error(`No pricing for model ${params.model}`);
     const message = await send(params, { signal: context.signal });
     const usage = tokenUsage(message.usage);
-    const cost = mode === 'replay' ? 0 : costUsd(params.model, usage);
+    const recordedCost = costUsd(params.model, usage);
+    const cost = mode === 'replay' ? 0 : recordedCost;
     await ledger.record({
       runId: context.runId,
       model: params.model,
@@ -213,7 +220,7 @@ export function createProvider(options: ProviderOptions): LLMProvider {
         `The model declined the request${message.stop_details?.category ? ` (${message.stop_details.category})` : ''}`,
       );
     }
-    return { message, usage, costUsd: cost };
+    return { message, usage, costUsd: cost, recordedCostUsd: recordedCost };
   }
 
   return {
@@ -229,10 +236,12 @@ export function createProvider(options: ProviderOptions): LLMProvider {
       let messages = request.messages;
       let usage: TokenUsage | undefined;
       let cost = 0;
+      let recordedCost = 0;
       for (let attempt = 1; ; attempt++) {
         const result = await call({ ...request, messages }, context, format);
         usage = usage ? addUsage(usage, result.usage) : result.usage;
         cost += result.costUsd;
+        recordedCost += result.recordedCostUsd;
         // Repairing a cut-off answer under the same limit would be cut off again.
         if (result.message.stop_reason === 'max_tokens') {
           throw new OutputTruncatedError(request.maxTokens ?? DEFAULT_MAX_TOKENS);
@@ -241,7 +250,15 @@ export function createProvider(options: ProviderOptions): LLMProvider {
           .flatMap((block) => (block.type === 'text' ? [block.text] : []))
           .join('');
         const checked = validate(schema, text);
-        if (checked.ok) return { value: checked.value, usage, costUsd: cost, attempts: attempt };
+        if (checked.ok) {
+          return {
+            value: checked.value,
+            usage,
+            costUsd: cost,
+            recordedCostUsd: recordedCost,
+            attempts: attempt,
+          };
+        }
         if (attempt === 2) throw new StructuredOutputError(text, checked.problem);
         // The JSON schema sent to the API can't express every Zod rule
         // (refinements, some bounds), so show the model what failed once.

@@ -223,14 +223,21 @@ describe('createProvider', () => {
       recordingsDir: dir,
       send,
     });
-    await recorder.generateObject({ ...request, schema: IssueExplanation }, context);
+    const recorded = await recorder.generateObject(
+      { ...request, schema: IssueExplanation },
+      context,
+    );
     expect(await readdir(dir)).toHaveLength(1);
+    expect(recorded.recordedCostUsd).toBe(recorded.costUsd);
 
     const ledger = createMemoryLedger(1_000);
     const replayer = createProvider({ ledger, mode: 'replay', recordingsDir: dir, send });
     const result = await replayer.generateObject({ ...request, schema: IssueExplanation }, context);
     expect(result.value).toEqual(explanation);
     expect(result.costUsd).toBe(0);
+    // Priced from the recorded tokens, so evals can report a comparable cost.
+    expect(result.recordedCostUsd).toBe(recorded.costUsd);
+    expect(result.recordedCostUsd).toBeGreaterThan(0);
     // Tokens are still recorded, at no cost, and the budget doesn't apply.
     expect(ledger.records).toMatchObject([{ inputTokens: 1_000, costUsd: 0 }]);
     expect(send).toHaveBeenCalledOnce();
