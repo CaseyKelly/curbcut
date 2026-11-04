@@ -1,6 +1,6 @@
 import { IssueExplanation } from '@curbcut/core';
 import { explanations, issues, scans, type Db } from '@curbcut/db';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { buildScanView, type ScanView } from './scan-view';
 
@@ -39,7 +39,11 @@ export async function loadScanView(db: Db, id: string): Promise<ScanView | null>
       explanationId: issues.explanationId,
     })
     .from(issues)
-    .where(eq(issues.scanId, id));
+    .where(eq(issues.scanId, id))
+    // Decides which elements make a group's capped list, so the worst show first.
+    // The rest is a stable tie-break (unique per scan): linking explanations
+    // rewrites rows, and without it the list could reshuffle between updates.
+    .orderBy(desc(issues.impact), issues.pageUrl, issues.fingerprint);
 
   const ids = [...new Set(issueRows.flatMap((i) => (i.explanationId ? [i.explanationId] : [])))];
   const bodies = new Map<string, IssueExplanation>();

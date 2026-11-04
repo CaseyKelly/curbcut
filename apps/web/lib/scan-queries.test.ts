@@ -157,6 +157,31 @@ describe.skipIf(!process.env.DATABASE_URL)('scan queries', () => {
       const view = await loadScanView(db, id);
       expect(view?.groups[0]?.explanation).toBeNull();
     });
+
+    it("keeps a group's worst elements in its capped list, in the same order after rows change", async () => {
+      const id = await newScan();
+      await db
+        .insert(issues)
+        .values([
+          ...Array.from({ length: 25 }, (_, i) =>
+            issueValues(id, { impact: 'minor', selector: `img.minor${i}` }),
+          ),
+          issueValues(id, { impact: 'critical', selector: 'img.worst' }),
+        ]);
+
+      const selectors = async () =>
+        (await loadScanView(db, id))?.groups[0]?.elements.map((e) => e.selector);
+      const before = await selectors();
+      expect(before).toHaveLength(20);
+      expect(before?.[0]).toBe('img.worst');
+
+      // Rewrites some rows, as linking an explanation does, without changing what's shown.
+      await db
+        .update(issues)
+        .set({ createdAt: new Date() })
+        .where(sql`${issues.scanId} = ${id} and ${issues.selector} like 'img.minor1%'`);
+      expect(await selectors()).toEqual(before);
+    });
   });
 
   describe('loadScanSignature', () => {

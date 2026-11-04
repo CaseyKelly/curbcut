@@ -125,7 +125,7 @@ How explanations work (#7):
 
 How the scan page works (#8):
 
-- **The view.** `ScanView` (in `apps/web/lib/scan-view.ts`, not `core`, since only the page uses it) holds the stage (`queued`, `scanning`, `explaining`, `done`, `failed`), the errors, and the groups from `groupIssues`, each with its explanation or null, its WCAG criteria, and its first 20 elements (the count is the full total), because every update resends the view.
+- **The view.** `ScanView` (in `apps/web/lib/scan-view.ts`, not `core`, since only the page uses it) holds the stage (`queued`, `scanning`, `explaining`, `done`, `failed`), the errors, and the groups from `groupIssues`, each with its explanation or null, its WCAG criteria, and its first 20 elements (the count is the full total), because every update resends the view. Elements are ordered by impact (critical first), then page URL and fingerprint, so the list includes the elements that set the group's impact and doesn't reshuffle between updates.
 
 **Repo mode (agent loop, M3).** The loop is hand-rolled on the Anthropic Messages API, using tool use and streaming. It's about 150 lines, which is short enough for both of us to own. Each turn works like this:
 
