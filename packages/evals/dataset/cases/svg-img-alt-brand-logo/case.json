@@ -1,10 +1,12 @@
 {
   "id": "svg-img-alt-brand-logo",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "A logo SVG has role=\"img\" but no name. The visible brand name already names the link, so the SVG can be hidden or labelled.",
-  "category": "images",
-  "tags": [],
+  "category": "text-alternatives",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "Brand.tsx",
   "issue": {
     "ruleId": "svg-img-alt",

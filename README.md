@@ -24,7 +24,7 @@
 Point Curbcut at a URL. An AI agent scans the page against WCAG 2.1 AA, tells you in plain language what's wrong and who it affects, finds the component in your repo that causes it, and drafts a minimal fix. **Nothing changes until a human approves the diff.** Then it opens a pull request and re-scans the preview deploy to check the fix worked.
 
 <p align="center">
-  <img src="docs/assets/scan-mockup.svg" alt="Concept mockup of a scan: 23 issues across 5 rules, from critical missing image alt text to a minor landmark issue, mapped to 6 React components, with 5 drafted fixes and 1 question waiting for review." width="760">
+  <img src="docs/assets/scan-mockup.svg" alt="Concept mockup of a scan: 23 issues across 5 rules, from critical missing image alt text to serious unnamed links, mapped to 6 React components, with 5 drafted fixes and 1 question waiting for review." width="760">
 </p>
 
 <details>
@@ -37,10 +37,10 @@ $ curbcut scan https://shop.example.com
   ✓ axe-core · WCAG 2.1 AA                  23 issues · 5 rules
 
   ● critical  image-alt        9  Images have no text alternative
+  ● critical  label            3  Form fields have no label
+  ● critical  button-name      1  Buttons have no accessible name
   ● serious   color-contrast   8  Text is hard to read (3.1:1)
-  ● serious   label            3  Form fields have no label
-  ● moderate  heading-order    2  Headings skip a level
-  ● minor     region           1  Content sits outside landmarks
+  ● serious   link-name        2  Links have no accessible name
 
   → Mapped 23 issues to 6 React components
   → Drafted 5 fixes and 1 question for you

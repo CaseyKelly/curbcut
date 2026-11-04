@@ -1,0 +1,30 @@
+{
+  "id": "role-img-alt-star-rating",
+  "version": 1,
+  "framework": "react",
+  "description": "A star rating drawn with a CSS gradient has role=\"img\" but no accessible name.",
+  "category": "text-alternatives",
+  "tags": [],
+  "filePath": "ProductRating.tsx",
+  "issue": {
+    "ruleId": "role-img-alt",
+    "impact": "serious",
+    "help": "[role=\"img\"] and [role=\"image\"] elements must have alternative text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/role-img-alt?application=playwright",
+    "wcag": [
+      "1.1.1"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "div[role=\"img\"]",
+    "html": "<div role=\"img\" style=\"width: 80px; height: 16px; background: linear-gradient(90deg, rgb(180, 83, 9) 80%, rgb(214, 211, 209) 0px);\"></div>",
+    "failureSummary": "Fix any of the following:\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute",
+    "fingerprint": "role-img-alt:div[role=\"img\"]"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 7,
+      "end": 7
+    }
+  ]
+}

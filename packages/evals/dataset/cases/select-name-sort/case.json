@@ -1,10 +1,12 @@
 {
   "id": "select-name-sort",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "A sort select sits next to visible \"Sort by\" text that isn't associated with it.",
-  "category": "forms",
-  "tags": [],
+  "category": "form-labels",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "SortControl.tsx",
   "issue": {
     "ruleId": "select-name",

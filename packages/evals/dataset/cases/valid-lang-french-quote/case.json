@@ -1,0 +1,30 @@
+{
+  "id": "valid-lang-french-quote",
+  "version": 1,
+  "framework": "react",
+  "description": "A French quotation sets lang to the word \"french\" rather than a language code.",
+  "category": "structure",
+  "tags": [],
+  "filePath": "GrowerQuote.tsx",
+  "issue": {
+    "ruleId": "valid-lang",
+    "impact": "serious",
+    "help": "lang attribute must have a valid value",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/valid-lang?application=playwright",
+    "wcag": [
+      "3.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "blockquote",
+    "html": "<blockquote lang=\"french\">Une plante heureuse pousse lentement.</blockquote>",
+    "failureSummary": "Fix all of the following:\n  Value of lang attribute not included in the list of valid languages",
+    "fingerprint": "valid-lang:blockquote"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 4,
+      "end": 4
+    }
+  ]
+}

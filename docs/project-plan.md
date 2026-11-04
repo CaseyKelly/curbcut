@@ -148,25 +148,29 @@ Evals score the fixer from Milestone 1 onward. To make that possible, M1 ships a
 
 **Repo-mode cases** (M3, #25) don't carry their own repo. They run the agent against `fixtures/sample-site`, and `sourceFiles` names the sample-site file(s) the issue maps to. One shared, realistic repo is closer to what the agent will face than ten tiny ones, the sample site's seeded-issue manifest already says where each issue lives, and M3's "done when" is measured on that repo anyway. The cost is coupling: a change to the sample site can change what a repo-mode case measures, so such a change bumps `datasetVersion` and keeps `issues.manifest.json` in sync. If one repo proves too narrow, a second fixture repo can sit beside it.
 
-`manifest.json` holds a `datasetVersion` that is bumped on any change, and every result records both the dataset version and the case version. Git provides the history.
+`manifest.json` holds a `datasetVersion` that is bumped on any change, and every result records both the dataset version and the case version. Git provides the history, and `dataset/CHANGELOG.md` says what each version changed.
 
-| Category              | Examples                                                       | Cases  |
-| --------------------- | -------------------------------------------------------------- | ------ |
-| Text alternatives     | `img` without alt, icon-only buttons, SVGs                     | 8      |
-| Form labels           | Unlabeled inputs, placeholder used as label                    | 7      |
-| ARIA misuse           | Invalid roles, `aria-hidden` on focusable elements             | 7      |
-| Keyboard and focus    | `div` with onClick, positive tabindex                          | 6      |
-| No change needed      | Already-correct code, decorative `alt=""`, axe false positives | 6      |
-| Color contrast        | Tailwind classes, inline styles, theme tokens                  | 5      |
-| Structure             | Heading order, landmarks, `lang`, page title                   | 5      |
-| Link and button names | "Click here", empty links                                      | 4      |
-| Needs a human         | Alt text that depends on the image content                     | 2      |
-| **Total (v1)**        |                                                                | **50** |
+| Category              | `category` value    | Examples                                                           | Target |
+| --------------------- | ------------------- | ------------------------------------------------------------------ | ------ |
+| Text alternatives     | `text-alternatives` | `img` without alt, icon-only buttons, SVGs                         | 8      |
+| Form labels           | `form-labels`       | Unlabeled inputs, submit inputs with no name                       | 7      |
+| ARIA misuse           | `aria`              | Invalid roles, `aria-hidden` on focusable elements                 | 7      |
+| Keyboard and focus    | `keyboard`          | `div` with onClick and a role, nested controls, unreachable frames | 6      |
+| No change needed      | `no-change`         | Already-correct code, decorative `alt=""`, stale reports           | 6      |
+| Color contrast        | `contrast`          | Utility classes, inline styles, theme tokens                       | 5      |
+| Structure             | `structure`         | Lists, table headers, `lang` on an element                         | 5      |
+| Link and button names | `names`             | Empty links and buttons                                            | 4      |
+| Needs a human         | `needs-human`       | Alt text that depends on the image content                         | 2      |
+| **Total**             |                     |                                                                    | **50** |
+
+Targets are minimums, and `dataset/CHANGELOG.md` says what each version holds. These are the only categories, and the validator enforces them. No change needed and Needs a human hold every case with that outcome, whatever its topic.
+
+A case's target has to be something axe reports under the WCAG A and AA tags, because scorer (a) fails a fix case whose input doesn't report its target rule. That rules out `best-practice` rules such as positive `tabindex`, heading order, and landmarks, bugs axe has no rule for such as placeholder-only labels and "click here" links, and the document's `lang` and title, which the harness supplies. A `div` with onClick is covered by giving it a role axe can check and having the case's `test.tsx` check the keyboard behaviour. Evals therefore don't measure those other bugs; widening this would mean changing the scan's tags, which also changes what users see.
 
 **Scorers.** Each case gets five scores:
 
 - **(a) Resolved.** Render the patched component with a tiny Vite harness in Playwright and run axe. The target violation must be gone, with no new violations: the target rule reports no nodes, and no rule reports more nodes than on the input. Nodes are counted rather than compared because a fix can move the DOM around, which changes their selectors, so one node swapped for another under a non-target rule goes unnoticed. A fix or unsure case whose input no longer reports its target rule fails (a), so axe drift can't pass a no-op.
-- **(b) Build safe.** `tsc --noEmit`, ESLint with `jsx-a11y`, and the case's own test if it has one. Inputs break `jsx-a11y` rules on purpose, so ESLint fails only on errors the patch adds.
+- **(b) Build safe.** `tsc --noEmit`, ESLint with `jsx-a11y`, and the case's own test if it has one. Inputs break `jsx-a11y` rules on purpose, so ESLint fails only on errors the patch adds. A lint rule is excused only where axe's own fix is what it forbids, and only for that target: `no-noninteractive-tabindex` when fixing `scrollable-region-focusable`.
 - **(c) Scoped.** The diff touches only the entry file and stays near the offending element. For no-change cases, any diff fails.
 - **(d) Judge.** Haiku 5.5 scores 1–5 against a written rubric: correct, minimal, idiomatic React, and native elements preferred over ARIA. Upasana hand-labels 15 cases to calibrate it, and we report how often the judge lands within 1 point of those labels, with a target of 80% or more (#15).
 - **(e) Cost and latency.** Recorded per case, summed and given a p95 per run.

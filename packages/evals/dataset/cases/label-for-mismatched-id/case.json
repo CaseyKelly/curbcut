@@ -1,9 +1,9 @@
 {
   "id": "label-for-mismatched-id",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "The postcode label's htmlFor points at an id that doesn't exist, so the input is unlabelled.",
-  "category": "forms",
+  "category": "form-labels",
   "tags": [],
   "filePath": "DeliveryForm.tsx",
   "issue": {

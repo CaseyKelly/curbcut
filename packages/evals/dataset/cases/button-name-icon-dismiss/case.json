@@ -1,10 +1,12 @@
 {
   "id": "button-name-icon-dismiss",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "An icon-only dismiss button has no accessible name.",
-  "category": "names",
-  "tags": [],
+  "category": "text-alternatives",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "PromoBanner.tsx",
   "issue": {
     "ruleId": "button-name",

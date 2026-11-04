@@ -27,6 +27,19 @@ export type BuildCheck = {
   patched: string;
   /** The case's test.tsx, if it has one. */
   testPath?: string;
+  /** The axe rule the patch is fixing, which can excuse a lint rule. */
+  targetRule?: string;
+};
+
+/**
+ * Lint rules a patch may break when fixing an axe rule, because axe's own fix
+ * is what the lint rule forbids. A scrollable region with nothing focusable in
+ * it needs `tabIndex={0}`, which is correct but would otherwise count as a
+ * merge-blocking build break. Only these targets are excused (#14). The excuse
+ * covers the whole patch, not one element; scorer (c) keeps it near the region.
+ */
+const LINT_EXEMPTIONS: Record<string, string[]> = {
+  'scrollable-region-focusable': ['jsx-a11y/no-noninteractive-tabindex'],
 };
 
 /** Type errors per file, with the dataset's compiler options, in one program. */
@@ -126,7 +139,9 @@ export async function scoreBuilds(dir: string, checks: BuildCheck[]): Promise<Ma
       lintErrors(c.input, lintPath),
       lintErrors(c.patched, lintPath),
     ]);
+    const exempt = (c.targetRule && LINT_EXEMPTIONS[c.targetRule]) || [];
     for (const [rule, n] of after) {
+      if (exempt.includes(rule)) continue;
       const was = before.get(rule) ?? 0;
       if (n > was) notes.push(`buildSafe: ESLint ${rule} (${was} -> ${n} errors)`);
     }

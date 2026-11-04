@@ -1,0 +1,30 @@
+{
+  "id": "label-textarea-feedback",
+  "version": 1,
+  "framework": "react",
+  "description": "A textarea has a visible prompt beside it, but the prompt is a paragraph, not a label.",
+  "category": "form-labels",
+  "tags": [],
+  "filePath": "FeedbackForm.tsx",
+  "issue": {
+    "ruleId": "label",
+    "impact": "critical",
+    "help": "Form elements must have labels",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/label?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "#delivery-feedback",
+    "html": "<textarea id=\"delivery-feedback\" name=\"feedback\" rows=\"4\"></textarea>",
+    "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has no placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"",
+    "fingerprint": "label:#delivery-feedback"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 4,
+      "end": 5
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "color-contrast-status-badge",
+  "version": 1,
+  "framework": "react",
+  "description": "White text on a light green badge does not meet the contrast minimum.",
+  "category": "contrast",
+  "tags": [],
+  "filePath": "StockBadge.tsx",
+  "issue": {
+    "ruleId": "color-contrast",
+    "impact": "serious",
+    "help": "Elements must meet minimum color contrast ratio thresholds",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+    "wcag": [
+      "1.4.3"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "span",
+    "html": "<span style=\"background: rgb(34, 197, 94); color: rgb(255, 255, 255); padding: 2px 8px; font-size: 12px;\">In stock</span>",
+    "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.27 (foreground color: #ffffff, background color: #22c55e, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1",
+    "fingerprint": "color-contrast:span"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 3,
+      "end": 3
+    }
+  ]
+}

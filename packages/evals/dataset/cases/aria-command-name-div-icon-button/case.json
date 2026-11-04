@@ -1,0 +1,30 @@
+{
+  "id": "aria-command-name-div-icon-button",
+  "version": 1,
+  "framework": "react",
+  "description": "A div with onClick acts as an icon button. axe reports the missing name, and test.tsx checks the part axe cannot: the button must work from the keyboard.",
+  "category": "keyboard",
+  "tags": [],
+  "filePath": "WishlistCounter.tsx",
+  "issue": {
+    "ruleId": "aria-command-name",
+    "impact": "serious",
+    "help": "ARIA commands must have an accessible name",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-command-name?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": ".icon-button",
+    "html": "<div role=\"button\" class=\"icon-button\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M8 14L2 8a3.5 3.5 0 0 1 6-3 3.5 3.5 0 0 1 6 3z\" fill=\"currentColor\"></path></svg></div>",
+    "failureSummary": "Fix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute",
+    "fingerprint": "aria-command-name:.icon-button"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 7,
+      "end": 11
+    }
+  ]
+}

@@ -122,4 +122,37 @@ describe('scoreBuilds', () => {
       'buildSafe: ESLint jsx-a11y/no-static-element-interactions (0 -> 1 errors)',
     ]);
   }, 30_000);
+
+  it('excuses tabIndex on a scrollable region, and only for that target', async () => {
+    const patched = FIXED.replace('<div>', '<div tabIndex={0}>');
+    const check = (key: string, targetRule?: string) => ({
+      key,
+      filePath: 'Tile.tsx',
+      input: INPUT,
+      patched,
+      targetRule,
+    });
+    const notes = ['buildSafe: ESLint jsx-a11y/no-noninteractive-tabindex (0 -> 1 errors)'];
+    const scores = await scoreBuilds(dir, [
+      check('scrollable', 'scrollable-region-focusable'),
+      check('other-target', 'image-alt'),
+      check('no-target'),
+    ]);
+    expect(scores.get('scrollable')).toEqual({ pass: true, notes: [] });
+    expect(scores.get('other-target')?.notes).toEqual(notes);
+    expect(scores.get('no-target')?.notes).toEqual(notes);
+  }, 30_000);
+
+  it('still flags other new lint errors on an excused target', async () => {
+    const scores = await scoreBuilds(dir, [
+      {
+        key: 'scrollable-with-click',
+        filePath: 'Tile.tsx',
+        input: INPUT,
+        patched: FIXED.replace('<div>', '<div tabIndex={0} onClick={() => {}}>'),
+        targetRule: 'scrollable-region-focusable',
+      },
+    ]);
+    expect(scores.get('scrollable-with-click')?.pass).toBe(false);
+  }, 30_000);
 });

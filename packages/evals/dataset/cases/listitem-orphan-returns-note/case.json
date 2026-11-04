@@ -1,0 +1,30 @@
+{
+  "id": "listitem-orphan-returns-note",
+  "version": 1,
+  "framework": "react",
+  "description": "A list item sits directly in a div, with no list around it.",
+  "category": "structure",
+  "tags": [],
+  "filePath": "ReturnsNote.tsx",
+  "issue": {
+    "ruleId": "listitem",
+    "impact": "serious",
+    "help": "<li> elements must be contained in a <ul> or <ol>",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/listitem?application=playwright",
+    "wcag": [
+      "1.3.1"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "li",
+    "html": "<li>Free returns within 30 days</li>",
+    "failureSummary": "Fix any of the following:\n  List item does not have a <ul> or <ol> parent element. Ensure the <li> is a direct child of a <ul> or <ol>, or that the parent has role=\"list\".",
+    "fingerprint": "listitem:li"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 3,
+      "end": 5
+    }
+  ]
+}

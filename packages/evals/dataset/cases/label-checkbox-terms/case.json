@@ -1,0 +1,30 @@
+{
+  "id": "label-checkbox-terms",
+  "version": 1,
+  "framework": "react",
+  "description": "A terms checkbox sits next to its text, which is in a span and not tied to the input.",
+  "category": "form-labels",
+  "tags": [],
+  "filePath": "TermsCheckbox.tsx",
+  "issue": {
+    "ruleId": "label",
+    "impact": "critical",
+    "help": "Form elements must have labels",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/label?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "#accept-terms",
+    "html": "<input id=\"accept-terms\" type=\"checkbox\" name=\"terms\">",
+    "failureSummary": "Fix any of the following:\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element has no placeholder attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"",
+    "fingerprint": "label:#accept-terms"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 4,
+      "end": 5
+    }
+  ]
+}

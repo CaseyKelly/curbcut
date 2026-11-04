@@ -20,6 +20,28 @@ export const DatasetManifest = z
   });
 export type DatasetManifest = z.infer<typeof DatasetManifest>;
 
+/**
+ * The plan's nine categories and the v1 case count for each. The PR comment
+ * reports by category (#17), so a case can't invent its own (#14).
+ */
+export const CATEGORY_TARGETS = {
+  'text-alternatives': 8,
+  'form-labels': 7,
+  aria: 7,
+  keyboard: 6,
+  'no-change': 6,
+  contrast: 5,
+  structure: 5,
+  names: 4,
+  'needs-human': 2,
+} as const;
+
+/** Two categories are outcomes rather than topics, so the outcome decides them. */
+const OUTCOME_CATEGORIES: Partial<Record<EvalCase['expectedOutcome'], string>> = {
+  no_change_needed: 'no-change',
+  unsure: 'needs-human',
+};
+
 /** What a case folder may hold, and whether each entry is a file or a folder. */
 const CASE_ENTRIES: Record<string, 'file' | 'folder'> = {
   'case.json': 'file',
@@ -81,6 +103,15 @@ function validateCase(dir: string, folder: string): { case?: EvalCase; errors: s
   }
   const c = parsed.data;
   if (c.id !== folder) fail(`id "${c.id}" does not match its folder`);
+  if (!Object.hasOwn(CATEGORY_TARGETS, c.category)) {
+    fail(`unknown category "${c.category}"`);
+  } else {
+    const wanted = OUTCOME_CATEGORIES[c.expectedOutcome];
+    const isOutcomeCategory = Object.values(OUTCOME_CATEGORIES).includes(c.category);
+    if (wanted ? c.category !== wanted : isOutcomeCategory) {
+      fail(`category "${c.category}" does not fit expectedOutcome "${c.expectedOutcome}"`);
+    }
+  }
 
   // input/ holds exactly the file the agent sees: anything else would be
   // extra context for the agent, or even the answer. (sourceFiles are

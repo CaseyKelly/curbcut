@@ -1,9 +1,9 @@
 {
   "id": "frame-title-video-embed",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "An embedded video iframe has no title.",
-  "category": "names",
+  "category": "text-alternatives",
   "tags": [],
   "filePath": "RepottingVideo.tsx",
   "issue": {

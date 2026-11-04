@@ -1,9 +1,9 @@
 {
   "id": "button-name-hidden-text-is-correct",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "Stale report: the icon button already has visually hidden text. Adding an aria-label would duplicate it.",
-  "category": "names",
+  "category": "no-change",
   "tags": [],
   "filePath": "SearchToggle.tsx",
   "issue": {

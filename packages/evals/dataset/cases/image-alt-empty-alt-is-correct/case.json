@@ -1,10 +1,12 @@
 {
   "id": "image-alt-empty-alt-is-correct",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "Stale report: the decorative quote mark already has alt=\"\". Adding descriptive alt text would make it worse.",
-  "category": "images",
-  "tags": [],
+  "category": "no-change",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "Testimonial.tsx",
   "issue": {
     "ruleId": "image-alt",
