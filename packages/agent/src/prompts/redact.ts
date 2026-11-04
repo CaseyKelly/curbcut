@@ -4,44 +4,50 @@
 // secret scanner that redacts repo files before they reach a prompt (#21)
 // covers the rest in M3.
 //
-// It fails closed: what it doesn't recognize is removed, not passed through.
+// It works from an allowlist, so what it doesn't recognize is removed: an
+// attribute keeps its value only if it's on the list of attributes that
+// accessibility rules and explanations are about (`id`, `class`, `role`,
+// `aria-*`, `alt`, `href`, and so on). Every other attribute keeps its name
+// and loses its value. Kept URLs and text lose query strings, credentials,
+// and the like.
+//
 // It reads start tags with a small tokenizer rather than regexes, because
 // quotes decide where an attribute ends and axe cuts long HTML off, so a tag
 // can stop anywhere. A tag that doesn't parse cleanly keeps only its name,
 // since axe's truncated source doesn't escape quotes and the attribute
-// boundaries can't be trusted. Comments and script, style, and textarea
-// bodies are dropped, so text inside them can't be mistaken for a tag.
+// boundaries can't be trusted. Comments, and the bodies of elements whose
+// content isn't markup, are dropped, so text in them can't pass for a tag.
 //
-// What it can't catch: a token in the path (`/reset/SECRET`), the value of an
-// `<option>`, and secrets in text content.
+// What it can't catch: text content; a token in a URL path (`/reset/SECRET`);
+// a secret in `id` or in free text in `title` or `aria-label` that isn't
+// shaped like a URL.
 
 /** Input types whose `value` is the visible label, which rules like `button-name` need. */
 const VISIBLE_VALUE_TYPES = new Set(['submit', 'button', 'reset']);
 
 /** Elements whose bodies are dropped: text in them isn't markup, and may hold anything. */
-const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'textarea']);
+const RAW_TEXT_ELEMENTS = new Set(
+  'script style textarea title xmp iframe noembed noframes noscript'.split(' '),
+);
 
-/** Attributes that hold a URL. Others are caught by name (`xlink:href`, `imagesrcset`). */
-const URL_ATTRIBUTES = new Set([
-  'href',
-  'src',
-  'srcset',
-  'action',
-  'formaction',
-  'poster',
-  'cite',
-  'data',
-  'ping',
-  'background',
-  'manifest',
-]);
-const URL_ATTRIBUTE_NAME = /(?:src|srcset|href|url|action|poster)$/;
+/** Attributes whose value is a URL. */
+const URL_ATTRIBUTES = new Set(
+  'href src action formaction poster cite ping background manifest data xlink:href'.split(' '),
+);
+
+/** Attributes whose value is text people read; `aria-*` is too. */
+const TEXT_ATTRIBUTES = new Set(['title', 'alt', 'placeholder', 'label', 'summary', 'abbr']);
+
+/** Attributes whose value is plain, and what rules and explanations are about. */
+const PLAIN_ATTRIBUTES = new Set(
+  'id class role lang xml:lang dir tabindex type name for form scope headers colspan rowspan accesskey autocomplete inputmode width height charset http-equiv rel target method enctype download media sizes loading min max step maxlength minlength pattern size rows cols wrap open start reversed span kind srclang hreflang decoding crossorigin referrerpolicy translate spellcheck draggable contenteditable viewbox xmlns focusable'.split(
+    ' ',
+  ),
+);
 
 /**
- * Names that suggest a secret or personal data. Matched against attribute
- * names and against an element's `name`, `id` and `property`, so
- * `<button name="csrf" value="...">` is caught too. A little over-redaction
- * (`author`) costs an explanation nothing.
+ * Names that suggest a secret. Only used on a button's `name`, to decide
+ * whether its label can stay: `<input type="submit" name="csrf" value="...">`.
  */
 const SENSITIVE_NAME = new RegExp(
   [
@@ -65,7 +71,6 @@ const SENSITIVE_NAME = new RegExp(
     'credential',
     'signature',
     '(?:^|[-_:])sig(?:$|[-_])',
-    'email',
   ].join('|'),
   'i',
 );
@@ -176,45 +181,56 @@ function readStartTag(html: string, start: number): StartTag {
 
 /**
  * One URL without what can carry a secret: credentials, the query string, path
- * parameters like `;jsessionid=`, fragments like `#access_token=...`, and the
- * payload of `data:` and `javascript:` URLs.
+ * parameters like `;jsessionid=`, any fragment but a plain id (`#main`), and
+ * the payload of `data:`, `javascript:` and `vbscript:` URLs. Every step is a
+ * linear scan, since this can see up to 20,000 characters.
  */
-function stripUrlSecrets(url: string): string {
+function scrubUrl(url: string): string {
   return url
-    .replace(/^(data:[^;,]*|javascript:)[\s\S]*$/i, '$1')
-    .replace(/^((?:[a-z][a-z0-9+.-]*:)?\/\/)[^/?#@\s]*@/i, '$1')
+    .trim()
+    .replace(/^(data:[^;,]*|javascript:|vbscript:)[\s\S]*$/i, '$1')
+    .replace(/\/\/[^/?#@\s]*@/g, '//')
     .replace(/\?[\s\S]*$/, '')
     .replace(/;[^/?#]*/g, '')
-    .replace(/#[^\s]*[=&][^\s]*/, '');
+    .replace(/#(?![\w-]*$)[\s\S]*$/, '');
 }
 
-/**
- * `srcset` is candidates separated by commas, each a URL and maybe a
- * descriptor. A comma can be part of a URL, so clean each whitespace-separated
- * piece; a candidate cut short loses its trailing comma, which doesn't matter.
- */
-function stripSrcsetSecrets(srcset: string): string {
-  return srcset
+/** Whether a word in free text looks like a URL, so "Delete?" stays and `/x?token=1` goes. */
+function looksLikeUrl(word: string): boolean {
+  if (
+    word.includes('://') ||
+    word.startsWith('/') ||
+    /^(?:data|javascript|vbscript):/i.test(word)
+  ) {
+    return true;
+  }
+  const query = word.indexOf('?');
+  if (query !== -1 && word.indexOf('=', query) !== -1) return true;
+  const hash = word.indexOf('#');
+  return hash !== -1 && /[=&]/.test(word.slice(hash));
+}
+
+/** Text people read, such as `title` and `aria-label`: URL-shaped words are scrubbed. */
+function scrubText(text: string): string {
+  return text
     .split(/(\s+)/)
-    .map((piece) => (isSpace(piece[0]) ? piece : stripUrlSecrets(piece)))
+    .map((piece) => (looksLikeUrl(piece) ? scrubUrl(piece) : piece))
     .join('');
 }
 
-/** Cleans every `url(...)` in a style declaration. */
-function stripStyleUrls(style: string): string {
-  return style.replace(
-    /url\(\s*(["']?)([^"')]*)\1\s*\)/gi,
-    (_m, q: string, url: string) => `url(${q}${stripUrlSecrets(url)}${q})`,
-  );
+/** A style declaration: `url(...)` can sit anywhere in it, in several forms. */
+function scrubStyle(style: string): string {
+  return style
+    .replace(/data:[^;,)"'\s]*[;,][^)"'\s]*/gi, 'data:')
+    .replace(/\/\/[^/?#@\s)"']*@/g, '//')
+    .replace(/\?[^\s)"',;]*/g, '');
 }
-
-const isUrlAttribute = (name: string) => URL_ATTRIBUTES.has(name) || URL_ATTRIBUTE_NAME.test(name);
 
 /** The attribute as it should be written, or undefined to keep it as it was. */
 function redactAttribute(
   attr: Attribute,
   tag: StartTag,
-  context: { keepInputValue: boolean; sensitiveElement: boolean },
+  context: { keepInputValue: boolean; attribute: (name: string) => Attribute | undefined },
 ): string | undefined {
   if (attr.value === null) return undefined;
   const name = attr.name.toLowerCase();
@@ -224,57 +240,59 @@ function redactAttribute(
       ? undefined
       : `${attr.name}=${attr.quote}${value}${attr.closed ? attr.quote : ''}`;
 
-  // Handlers and srcdoc hold code and whole documents; data-* holds whatever
-  // the app put there, and no explanation depends on it.
-  if (/^on[a-z]+$/.test(name) || name === 'srcdoc' || name.startsWith('data-')) return blank;
-  if (SENSITIVE_NAME.test(name)) return blank;
-  if ((name === 'value' || name === 'content') && context.sensitiveElement) return blank;
-  // An allowlist: an input with no type, an odd one, or one whose type was
-  // cut off is blanked, so a password can't slip through as "unknown".
-  if (name === 'value' && tag.tagName === 'input' && !context.keepInputValue) return blank;
+  // Only a button's label is a value worth keeping: it's the button's name.
+  if (name === 'value')
+    return tag.tagName === 'input' && context.keepInputValue ? undefined : blank;
 
-  if (name === 'srcset' || name === 'imagesrcset') return rewrite(stripSrcsetSecrets(attr.value));
-  if (isUrlAttribute(name)) return rewrite(stripUrlSecrets(attr.value));
-  if (name === 'style') return rewrite(stripStyleUrls(attr.value));
-  // `<meta http-equiv="refresh" content="0;url=/x?t=...">`
-  if (name === 'content' && tag.tagName === 'meta' && /url\s*=/i.test(attr.value)) {
-    return rewrite(
-      attr.value.replace(
-        /(url\s*=\s*)([\s\S]*)$/i,
-        (_m, p: string, u: string) => p + stripUrlSecrets(u),
-      ),
-    );
+  if (name === 'content' && tag.tagName === 'meta') {
+    // The viewport (zoom rules) and refresh (the `meta-refresh` rule) are the
+    // meta content that rules are about.
+    if (context.attribute('name')?.value?.trim().toLowerCase() === 'viewport') return undefined;
+    if (context.attribute('http-equiv')?.value?.trim().toLowerCase() === 'refresh') {
+      return rewrite(
+        attr.value.replace(
+          /(url\s*=\s*)([\s\S]*)$/i,
+          (_m, p: string, u: string) => p + scrubUrl(u),
+        ),
+      );
+    }
+    return blank;
   }
-  return undefined;
+
+  if (URL_ATTRIBUTES.has(name)) return rewrite(scrubUrl(attr.value));
+  if (name === 'style') return rewrite(scrubStyle(attr.value));
+  if (TEXT_ATTRIBUTES.has(name) || name.startsWith('aria-')) return rewrite(scrubText(attr.value));
+  if (PLAIN_ATTRIBUTES.has(name)) return undefined;
+  // Everything else: handlers, `data-*`, srcdoc, framework attributes, custom
+  // elements' config. The name stays, so the element's shape does.
+  return blank;
 }
 
 function redactStartTag(tag: StartTag): string {
   // Dropping every attribute, the tail too: where the tag really ends is a guess.
   if (tag.malformed) return `${tag.head}>`;
 
-  const attr = (name: string) => tag.attributes.find((a) => a.name.toLowerCase() === name);
-  const type = tag.tagName === 'input' ? attr('type') : undefined;
-  const sensitiveElement = tag.attributes.some(
-    (a) =>
-      ['name', 'id', 'property'].includes(a.name.toLowerCase()) &&
-      a.value !== null &&
-      SENSITIVE_NAME.test(a.value),
-  );
+  const attribute = (name: string) => tag.attributes.find((a) => a.name.toLowerCase() === name);
+  const type = tag.tagName === 'input' ? attribute('type') : undefined;
+  const buttonName = attribute('name')?.value ?? '';
   const keepInputValue =
-    type?.value != null && type.closed && VISIBLE_VALUE_TYPES.has(type.value.trim().toLowerCase());
+    type?.value != null &&
+    type.closed &&
+    VISIBLE_VALUE_TYPES.has(type.value.trim().toLowerCase()) &&
+    !SENSITIVE_NAME.test(buttonName);
 
   const attributes = tag.attributes
-    .map((a) => a.lead + (redactAttribute(a, tag, { keepInputValue, sensitiveElement }) ?? a.raw))
+    .map((a) => a.lead + (redactAttribute(a, tag, { keepInputValue, attribute }) ?? a.raw))
     .join('');
   return `${tag.head}${attributes}${tag.tail}`;
 }
 
 /**
- * Removes likely secrets from HTML: the `value` of every input except
- * buttons, every `data-*` and `on*` value, attributes and elements whose
- * names look secret (`token`, `csrf`, `session`), and credentials, query
- * strings, and path parameters in URLs. Comments and script, style, and
- * textarea bodies are dropped. Other text content is left alone.
+ * Removes likely secrets from HTML. An attribute keeps its value only if it's
+ * on the allowlist; kept URLs and text lose credentials, query strings, and
+ * the like. The `value` of an input is kept only on buttons. Comments and the
+ * bodies of script, style, textarea, title, and a few other elements are
+ * dropped. Text content is left alone.
  */
 export function redactHtml(html: string): string {
   const n = html.length;

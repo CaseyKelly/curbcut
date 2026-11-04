@@ -324,7 +324,7 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     return { a, b, c, scanId };
   }
 
-  it('links the cached groups even when a call then fails, and stops there', async () => {
+  it('links the cached groups even when the calls then fail', async () => {
     const [cachedRule, a, b] = [newRule('cached'), newRule('a'), newRule('b')];
     const html = '<img src="cached2.png">';
     await run(setup(answers).handler, await newScan([{ ruleId: cachedRule, count: 1, html }]));
@@ -337,8 +337,7 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
       concurrency: 1,
     });
     await expect(run(handler, scanId)).rejects.toThrow('socket hang up');
-    // One call, then no more: the rest would fail the same way.
-    expect(sent).toHaveBeenCalledTimes(1);
+    expect(sent).toHaveBeenCalledTimes(2);
     const rows = await issuesOf(scanId);
     expect(rows.find((r) => r.ruleId === cachedRule)!.explanationId).not.toBeNull();
     expect(rows.find((r) => r.ruleId === a)!.explanationId).toBeNull();
@@ -378,10 +377,103 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
   it('retries on a rate limit or server error instead of failing for good', async () => {
     for (const status of [429, 500, 529]) {
       const { scanId } = await threeGroups();
-      const { sent, handler } = setup(() => Promise.reject(apiError(status)), { concurrency: 1 });
+      const { handler } = setup(() => Promise.reject(apiError(status)), { concurrency: 1 });
       await expect(run(handler, scanId)).rejects.not.toBeInstanceOf(PermanentError);
-      expect(sent).toHaveBeenCalledTimes(1);
     }
+  });
+
+  /** `count` uncached groups, biggest first. */
+  async function manyGroups(count: number) {
+    const rules = Array.from({ length: count }, (_, i) => newRule(`g${i}`));
+    const scanId = await newScan(rules.map((ruleId, i) => ({ ruleId, count: count - i })));
+    return { rules, scanId };
+  }
+
+  it('stops calling the model after a few transient errors', async () => {
+    const { scanId } = await manyGroups(8);
+    const { sent, handler } = setup(() => Promise.reject(apiError(529)), { concurrency: 1 });
+    await expect(run(handler, scanId)).rejects.toThrow('HTTP 529');
+    expect(sent).toHaveBeenCalledTimes(3);
+  });
+
+  it('explains every other group when one group always fails', async () => {
+    const { rules, scanId } = await manyGroups(6);
+    const bad = rules[1]!;
+    const { sent, handler } = setup(
+      (params) =>
+        JSON.stringify(params.messages).includes(bad)
+          ? Promise.reject(apiError(500))
+          : Promise.resolve(reply(explanationJson)),
+      { concurrency: 1 },
+    );
+    await expect(run(handler, scanId)).rejects.toThrow('HTTP 500');
+    // Each group was asked once, and only the bad one is left.
+    expect(sent).toHaveBeenCalledTimes(6);
+    const rows = await issuesOf(scanId);
+    expect(rows.filter((r) => r.explanationId === null).map((r) => r.ruleId)).toEqual(
+      rows.filter((r) => r.ruleId === bad).map((r) => r.ruleId),
+    );
+    // A retry asks only for the one that failed.
+    await expect(run(handler, scanId)).rejects.toThrow('HTTP 500');
+    expect(sent).toHaveBeenCalledTimes(7);
+  });
+
+  it('treats a payment error as permanent', async () => {
+    const { scanId } = await threeGroups();
+    const { handler } = setup(() => Promise.reject(apiError(402)), { concurrency: 1 });
+    await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+  });
+
+  describe('when the API rejects requests with a 400', () => {
+    // A spend limit set in the console, or an empty credit balance, is a 400
+    // on every call, and says nothing about the groups.
+    const spendLimit = () => Promise.reject(apiError(400));
+
+    it('fails the job instead of skipping every group', async () => {
+      const { scanId } = await manyGroups(8);
+      const { sent, handler } = setup(spendLimit, { concurrency: 1 });
+      await expect(run(handler, scanId)).rejects.toThrow(/rejected every request: HTTP 400/);
+      expect(sent).toHaveBeenCalledTimes(3);
+    });
+
+    it('fails the job when there are too few groups to tell, and all are rejected', async () => {
+      const { scanId } = await manyGroups(2);
+      const { handler } = setup(spendLimit, { concurrency: 1 });
+      await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+    });
+
+    it('still links the cached groups', async () => {
+      const [cachedRule, a, b, c] = [newRule('cached'), newRule('a'), newRule('b'), newRule('c')];
+      const html = '<img src="cached3.png">';
+      await run(setup(answers).handler, await newScan([{ ruleId: cachedRule, count: 1, html }]));
+      const scanId = await newScan([
+        { ruleId: a, count: 4 },
+        { ruleId: b, count: 3 },
+        { ruleId: c, count: 2 },
+        { ruleId: cachedRule, count: 1, html },
+      ]);
+      const { handler } = setup(spendLimit, { concurrency: 1 });
+      await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+      const rows = await issuesOf(scanId);
+      expect(rows.find((r) => r.ruleId === cachedRule)!.explanationId).not.toBeNull();
+    });
+
+    it('skips bad groups as before once the API has answered a call', async () => {
+      const { rules, scanId } = await manyGroups(6);
+      const { sent, handler } = setup(
+        (params) =>
+          JSON.stringify(params.messages).includes(rules[0]!)
+            ? Promise.resolve(reply(explanationJson))
+            : Promise.reject(apiError(400)),
+        { concurrency: 1 },
+      );
+      await run(handler, scanId);
+      expect(sent).toHaveBeenCalledTimes(6);
+      const scan = await scanOf(scanId);
+      expect(scan.explainStatus).toBe('completed');
+      expect(scan.explainError).toContain("5 of 6 groups couldn't be explained");
+      expect(scan.explainError).toContain('First reason: HTTP 400');
+    });
   });
 
   it('stops calling the model once the job has lost its lock', async () => {

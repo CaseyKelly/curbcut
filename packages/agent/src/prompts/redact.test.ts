@@ -35,9 +35,10 @@ describe('redactHtml: input values', () => {
     expect(redactHtml(html)).toBe(html);
   });
 
-  it('leaves values on other elements alone', () => {
-    const html = '<button type="hidden" value="x">Go</button><li value="3">';
-    expect(redactHtml(html)).toBe(html);
+  it('blanks values on other elements, whose value is never a label', () => {
+    expect(redactHtml('<button type="hidden" value="x">Go</button><li value="3">')).toBe(
+      '<button type="hidden" value="">Go</button><li value="">',
+    );
   });
 
   it('keeps everything else in an input tag, including its spacing', () => {
@@ -52,10 +53,7 @@ describe('redactHtml: URLs', () => {
     ['<a href="/reset?token=abc123">Reset</a>', '<a href="/reset">Reset</a>'],
     ["<a href='https://x.test/p?a=1&b=2#top'>x</a>", "<a href='https://x.test/p'>x</a>"],
     ['<img src=/a.png?sig=abc123>', '<img src=/a.png>'],
-    [
-      '<img srcset="/a.png?k=abc123 1x, /b.png?k=abc123 2x">',
-      '<img srcset="/a.png 1x, /b.png 2x">',
-    ],
+    ['<img srcset="/a.png?k=abc123 1x, /b.png?k=abc123 2x">', '<img srcset="">'],
     ['<a href="/cb#access_token=abc123&x=1">x</a>', '<a href="/cb">x</a>'],
     ['<form action="/login?next=abc123">', '<form action="/login">'],
     ['<a href="/x?token=abc123', '<a href="/x'],
@@ -92,8 +90,6 @@ describe('redactHtml: URLs, harder cases', () => {
     ['<a href="/x?ids=1,2&token=SECRET"></a>', '<a href="/x"></a>'],
     ['<a href="/x?q=a b&token=SECRET"></a>', '<a href="/x"></a>'],
     ['<a href="/x?a=1#frag,SECRET=1">x</a>', '<a href="/x">x</a>'],
-    ['<img srcset="/a.png?k=1,2&t=SECRET 1x, /b.png 2x">', '<img srcset="/a.png 1x, /b.png 2x">'],
-    ['<img srcset="/a.png?t=SECRET, /b.png?t=SECRET 2x">', '<img srcset="/a.png /b.png 2x">'],
     // Credentials and path parameters.
     ['<a href="https://bob:SECRET@example.com/">x</a>', '<a href="https://example.com/">x</a>'],
     ['<a href="//bob:SECRET@example.com/x">x</a>', '<a href="//example.com/x">x</a>'],
@@ -112,7 +108,6 @@ describe('redactHtml: URLs, harder cases', () => {
       '<image xlink:href="https://s3.test/a.png?X-Amz-Signature=SECRET">',
       '<image xlink:href="https://s3.test/a.png">',
     ],
-    ['<link imagesrcset="/a.png?t=SECRET 1x">', '<link imagesrcset="/a.png 1x">'],
     [
       '<div style="background:url(/a.png?t=SECRET) red">',
       '<div style="background:url(/a.png) red">',
@@ -153,9 +148,9 @@ describe('redactHtml: more attributes and names', () => {
     expect(redactHtml(html)).not.toContain('SECRET');
   });
 
-  it('keeps value and content when the name is ordinary', () => {
+  it('keeps a button label when its name is ordinary, and a viewport meta', () => {
     const html =
-      '<button name="save" value="draft">Save</button><meta name="viewport" content="width=device-width">';
+      '<input type="submit" name="save" value="Save"><meta name="viewport" content="width=device-width">';
     expect(redactHtml(html)).toBe(html);
   });
 });
@@ -196,6 +191,150 @@ describe('redactHtml: comments, raw text, and tags that do not parse', () => {
     const html = '<a href="/x?a=b" title="it\'s fine" class=btn>x</a>';
     expect(redactHtml(html)).toBe('<a href="/x" title="it\'s fine" class=btn>x</a>');
   });
+});
+
+describe('redactHtml: the allowlist', () => {
+  it.each([
+    '<a hx-get="/x?token=SECRET">x</a>',
+    '<div ng-init="t=\'SECRET\'">',
+    '<img longdesc="/x?t=SECRET">',
+    '<x-card config="SECRET">',
+    '<button value="SECRET">x</button>',
+    '<data value="SECRET">x</data>',
+    '<meta property="og:url" content="https://x.test/?t=SECRET">',
+    '<meta name="description" content="SECRET">',
+    '<img srcset="/a.png?t=SECRET 1x" imagesrcset="/b.png?t=SECRET">',
+    '<a title="https://x.test/?token=SECRET">x</a>',
+    '<a aria-label="https://x.test/?token=SECRET">x</a>',
+    '<input placeholder="/reset?token=SECRET">',
+  ])('leaves no secret in %s', (html) => {
+    expect(redactHtml(html)).not.toContain('SECRET');
+  });
+
+  it('keeps the name of an attribute it blanks, so the element keeps its shape', () => {
+    expect(redactHtml('<x-card config="SECRET" id="c1">')).toBe('<x-card config="" id="c1">');
+  });
+
+  it('keeps the attributes that rules and explanations are about', () => {
+    const html =
+      '<a href="/about" id="nav-1" class="link" role="button" tabindex="0" accesskey="s" aria-label="Open" ' +
+      'aria-describedby="hint" lang="en" title="More" target="_blank" rel="noopener" download disabled>x</a>' +
+      '<img src="/a.png" alt="A cat" width="10" height="10">' +
+      '<label for="email">Email</label><input type="email" id="email" name="email" autocomplete="email">' +
+      '<td colspan="2" headers="h1"><meta http-equiv="refresh" content="5">';
+    expect(redactHtml(html)).toBe(html);
+  });
+
+  it('does not blank a button label because its id looks sensitive', () => {
+    const html = '<input id="auth-btn" type="submit" value="Sign in">';
+    expect(redactHtml(html)).toBe(html);
+  });
+
+  it('keeps accesskey, which the accesskeys rule is about', () => {
+    expect(redactHtml('<a accesskey="s">Save</a>')).toBe('<a accesskey="s">Save</a>');
+  });
+
+  it('keeps ordinary question marks in text', () => {
+    const html =
+      '<button aria-label="Delete?" title="Are you sure? This cannot be undone">x</button>';
+    expect(redactHtml(html)).toBe(html);
+  });
+
+  it('keeps a viewport meta and a refresh, cleaning the refresh URL', () => {
+    expect(
+      redactHtml('<meta name="viewport" content="width=device-width, user-scalable=no">'),
+    ).toBe('<meta name="viewport" content="width=device-width, user-scalable=no">');
+    expect(redactHtml('<meta http-equiv="refresh" content="0;url=/x?t=SECRET">')).toBe(
+      '<meta http-equiv="refresh" content="0;url=/x">',
+    );
+  });
+});
+
+describe('redactHtml: URL edge cases', () => {
+  it.each([
+    ['<a href="/cb#a=1 access_token=SECRET">x</a>', '<a href="/cb">x</a>'],
+    ['<a href="/cb#a b=SECRET">x</a>', '<a href="/cb">x</a>'],
+    ['<a href=" https://bob:SECRET@example.com/">x</a>', '<a href="https://example.com/">x</a>'],
+    ['<a href=" javascript:t=\'SECRET\'">x</a>', '<a href="javascript:">x</a>'],
+    ['<a href="vbscript:msgbox(SECRET)">x</a>', '<a href="vbscript:">x</a>'],
+    [
+      '<a href="https://example.com/a?x=1&token=SECRET#frag">x</a>',
+      '<a href="https://example.com/a">x</a>',
+    ],
+    ['<a href="/page#main">Skip</a>', '<a href="/page#main">Skip</a>'],
+    ['<a href="#main">Skip</a>', '<a href="#main">Skip</a>'],
+    ['<a href="/x#">Top</a>', '<a href="/x#">Top</a>'],
+    [
+      '<a title="see https://u:SECRET@x.test/p?t=1 now">x</a>',
+      '<a title="see https://x.test/p now">x</a>',
+    ],
+    ['<a title="Reset: /reset?token=SECRET">x</a>', '<a title="Reset: /reset">x</a>'],
+    ['<a title="?token=SECRET">x</a>', '<a title="">x</a>'],
+  ])('%s', (html, expected) => {
+    expect(redactHtml(html)).toBe(expected);
+  });
+});
+
+describe('redactHtml: style', () => {
+  it.each([
+    [
+      '<div style="background:url(/a.png?t=SECRET) red">',
+      '<div style="background:url(/a.png) red">',
+    ],
+    [
+      `<div style="background:url('/a(1).png?t=SECRET')">`,
+      `<div style="background:url('/a(1).png')">`,
+    ],
+    [
+      `<div style="background:image-set('/a.png?t=SECRET' 1x)">`,
+      `<div style="background:image-set('/a.png' 1x)">`,
+    ],
+    [
+      '<div style="background:url(data:image/png;base64,SECRET)">',
+      '<div style="background:url(data:)">',
+    ],
+    [
+      '<div style="background:url(//u:SECRET@x.test/a.png)">',
+      '<div style="background:url(//x.test/a.png)">',
+    ],
+    ['<p style="color:#777;background:#fff">x</p>', '<p style="color:#777;background:#fff">x</p>'],
+  ])('%s', (html, expected) => {
+    expect(redactHtml(html)).toBe(expected);
+  });
+});
+
+describe('redactHtml: more raw-text elements', () => {
+  it.each([
+    '<title><a title="</title><input x=" value="SECRET"></title>',
+    '<xmp><a title="</xmp><input type="password" value="SECRET">',
+    '<iframe><a title="</iframe><input type="password" value="SECRET">',
+    '<noembed><a title="</noembed><input type="password" value="SECRET">',
+    '<noframes><a title="</noframes><input type="password" value="SECRET">',
+    '<noscript><a title="</noscript><input type="password" value="SECRET">',
+  ])('does not leak from %s', (html) => {
+    expect(redactHtml(html)).not.toContain('SECRET');
+  });
+});
+
+describe('redactHtml: speed on hostile input', () => {
+  const fast = (html: string) => {
+    const start = Date.now();
+    redactHtml(html);
+    expect(Date.now() - start).toBeLessThan(500);
+  };
+
+  it.each([
+    ['whitespace in a style url', `<div style="url(${' '.repeat(20_000)}">`],
+    ['question marks in a title', `<a title="${'?'.repeat(20_000)}">`],
+    ['question marks in an href', `<a href="${'?'.repeat(20_000)}">`],
+    ['slashes and semicolons in an href', `<a href="${'//;'.repeat(6_000)}">`],
+    ['hashes in an href', `<a href="${'#a'.repeat(10_000)}">`],
+    ['@ signs in a style', `<div style="${'//a@'.repeat(5_000)}">`],
+    ['semicolons in a style', `<div style="${'data:;'.repeat(4_000)}">`],
+    ['long words in text', `<a aria-label="${'a/b?c '.repeat(3_000)}">`],
+    ['open tags', '<a '.repeat(7_000)],
+    ['comment openers', '<!--'.repeat(5_000)],
+  ])('stays fast: %s', (_name, html) => fast(html));
 });
 
 describe('redactHtml: parsing', () => {
