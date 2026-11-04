@@ -150,7 +150,7 @@ Evals score the fixer from Milestone 1 onward. To make that possible, M1 ships a
 
 `manifest.json` holds a `datasetVersion` that is bumped on any change, and every result records both the dataset version and the case version. Git provides the history, and `dataset/CHANGELOG.md` says what each version changed.
 
-| Category              | `category` value    | Examples                                                           | Cases  |
+| Category              | `category` value    | Examples                                                           | Target |
 | --------------------- | ------------------- | ------------------------------------------------------------------ | ------ |
 | Text alternatives     | `text-alternatives` | `img` without alt, icon-only buttons, SVGs                         | 8      |
 | Form labels           | `form-labels`       | Unlabeled inputs, submit inputs with no name                       | 7      |
@@ -161,9 +161,9 @@ Evals score the fixer from Milestone 1 onward. To make that possible, M1 ships a
 | Structure             | `structure`         | Lists, table headers, `lang` on an element                         | 5      |
 | Link and button names | `names`             | Empty links and buttons                                            | 4      |
 | Needs a human         | `needs-human`       | Alt text that depends on the image content                         | 2      |
-| **Total (v1)**        |                     |                                                                    | **50** |
+| **Total**             |                     |                                                                    | **50** |
 
-These are the only categories, and the validator enforces them. No change needed and Needs a human hold every case with that outcome, whatever its topic.
+Targets are minimums, and `dataset/CHANGELOG.md` says what each version holds. These are the only categories, and the validator enforces them. No change needed and Needs a human hold every case with that outcome, whatever its topic.
 
 A case's target has to be something axe reports under the WCAG A and AA tags, because scorer (a) fails a fix case whose input doesn't report its target rule. That rules out `best-practice` rules such as positive `tabindex`, heading order, and landmarks, bugs axe has no rule for such as placeholder-only labels and "click here" links, and the document's `lang` and title, which the harness supplies. A `div` with onClick is covered by giving it a role axe can check and having the case's `test.tsx` check the keyboard behaviour. Evals therefore don't measure those other bugs; widening this would mean changing the scan's tags, which also changes what users see.
 

@@ -35,7 +35,8 @@ export type BuildCheck = {
  * Lint rules a patch may break when fixing an axe rule, because axe's own fix
  * is what the lint rule forbids. A scrollable region with nothing focusable in
  * it needs `tabIndex={0}`, which is correct but would otherwise count as a
- * merge-blocking build break. Only these targets are excused (#14).
+ * merge-blocking build break. Only these targets are excused (#14). The excuse
+ * covers the whole patch, not one element; scorer (c) keeps it near the region.
  */
 const LINT_EXEMPTIONS: Record<string, string[]> = {
   'scrollable-region-focusable': ['jsx-a11y/no-noninteractive-tabindex'],
