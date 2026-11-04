@@ -9,6 +9,8 @@ const rootEnv = fileURLToPath(new URL('../../.env', import.meta.url));
 if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 
 const config: NextConfig = {
+  // Stop `next dev` from writing apps/web/AGENTS.md; the root AGENTS.md is the guide.
+  agentRules: false,
   // Workspace packages ship TypeScript source, so Next compiles them.
   transpilePackages: ['@curbcut/core', '@curbcut/agent', '@curbcut/db'],
 };
