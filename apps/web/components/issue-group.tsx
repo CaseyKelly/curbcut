@@ -1,27 +1,19 @@
+import type { GroupView } from '@/lib/scan-view';
+import { linkClass, plural } from '@/lib/ui';
 import { wcagUnderstandingUrl } from '@/lib/wcag';
-import type { GroupView, ScanView } from '@/lib/scan-view';
 import { ImpactBadge } from './impact-badge';
-
-const linkClass = 'text-blue-800 underline hover:no-underline';
-
-/** What to say in place of an explanation, from where the scan's explain job stands. */
-function missingExplanation(stage: ScanView['stage'], explainStatus: ScanView['explainStatus']) {
-  if (stage === 'explaining') return 'Writing an explanation…';
-  if (explainStatus === 'failed') {
-    return 'Explanations aren’t available for this scan, so this is axe’s own description.';
-  }
-  return 'No explanation could be written for this rule, so this is axe’s own description.';
-}
 
 /** One rule's issues (#8): impact, explanation, WCAG and axe links, and the affected elements. */
 export function IssueGroup({
   group,
-  stage,
-  explainStatus,
+  missingExplanation,
+  showPage,
 }: {
   group: GroupView;
-  stage: ScanView['stage'];
-  explainStatus: ScanView['explainStatus'];
+  /** What to say where the explanation would be, if the group has none. */
+  missingExplanation: string;
+  /** Name each element's page, for scans of more than one. */
+  showPage: boolean;
 }) {
   const headingId = `group-${group.groupKey}`;
   const { explanation } = group;
@@ -33,10 +25,9 @@ export function IssueGroup({
         <ImpactBadge impact={group.impact} />
         <code className="text-lg font-semibold">{group.ruleId}</code>
         <span className="font-normal text-neutral-700">
-          {group.count} {group.count === 1 ? 'element' : 'elements'}
+          {plural(group.count, 'element', 'elements')}
         </span>
       </h3>
-      <p className="mt-2 text-neutral-700">{group.help}</p>
 
       {explanation ? (
         <dl className="mt-4 space-y-3">
@@ -58,7 +49,10 @@ export function IssueGroup({
           </div>
         </dl>
       ) : (
-        <p className="mt-4 text-neutral-700 italic">{missingExplanation(stage, explainStatus)}</p>
+        <>
+          <p className="mt-2 text-neutral-700">{group.help}</p>
+          <p className="mt-4 text-neutral-700 italic">{missingExplanation}</p>
+        </>
       )}
 
       <p className="mt-4">
@@ -99,6 +93,9 @@ export function IssueGroup({
         <ul className="mt-2 space-y-4">
           {group.elements.map((element, i) => (
             <li key={`${element.pageUrl}|${element.selector}|${i}`}>
+              {showPage ? (
+                <p className="text-sm break-all text-neutral-700">{element.pageUrl}</p>
+              ) : null}
               <p>
                 <code className="font-semibold break-all">{element.selector}</code>
               </p>

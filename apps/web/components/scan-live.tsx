@@ -1,38 +1,32 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { isFinal, ScanView } from '@/lib/scan-view';
+import {
+  connectionMessage,
+  explainedCount,
+  failureDetail,
+  missingExplanation,
+  retryNote,
+  skippedNote,
+  stageMessage,
+  type Connection,
+} from '@/lib/scan-messages';
+import { isFinal, parseDoneReason, parseScanEvent, type ScanView } from '@/lib/scan-view';
+import { plural } from '@/lib/ui';
 import { IssueGroup } from './issue-group';
 
-type Connection = 'live' | 'reconnecting' | 'lost';
-
-function plural(n: number, one: string, many: string) {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-/** The one line a screen reader hears when the scan moves to its next stage. */
-function stageMessage(view: ScanView): string {
-  const rules = plural(view.groups.length, 'rule', 'rules');
-  switch (view.stage) {
-    case 'queued':
-      return 'Waiting for the scan to start.';
-    case 'scanning':
-      return 'Scanning the page.';
-    case 'explaining':
-      return `Scan finished: ${plural(view.issueCount, 'issue', 'issues')} across ${rules}. Writing explanations.`;
-    case 'failed':
-      return 'The scan failed.';
-    case 'done':
-      return view.issueCount === 0
-        ? 'Scan finished: no accessibility issues found.'
-        : `Scan finished: ${plural(view.issueCount, 'issue', 'issues')} across ${rules}.`;
-  }
-}
+/**
+ * How long the stream may be down before the page says so. The server ends a
+ * stream every few minutes on purpose and the browser reconnects after 3 s, so
+ * a shorter wait would announce a problem that isn't one.
+ */
+const RECONNECT_NOTICE_MS = 6_000;
 
 /**
  * The scan page's live part (#8): shows the scan, and while it's still going
- * listens for changes over SSE. The stage is the only live region, so a screen
- * reader hears each stage once and isn't interrupted as explanations arrive.
+ * listens for changes over SSE. One status region, always rendered, holds the
+ * stage and the connection state, so a screen reader hears each change once and
+ * isn't interrupted as explanations arrive. Error details are plain text.
  */
 export function ScanLive({ initial }: { initial: ScanView }) {
   const [view, setView] = useState(initial);
@@ -42,125 +36,118 @@ export function ScanLive({ initial }: { initial: ScanView }) {
   useEffect(() => {
     if (isFinal(initial)) return;
     const events = new EventSource(`/api/scans/${initial.id}/events`);
-    events.addEventListener('open', () => setConnection('live'));
+    let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+    const live = () => {
+      clearTimeout(noticeTimer);
+      setConnection('live');
+    };
+    events.addEventListener('open', live);
     events.addEventListener('scan', (event: MessageEvent<string>) => {
-      try {
-        setView(ScanView.parse(JSON.parse(event.data)));
-        setConnection('live');
-      } catch (err) {
-        console.error('Ignoring an unreadable scan update', err);
+      const next = parseScanEvent(event.data);
+      if (next === null) {
+        console.error('Ignoring an unreadable scan update');
+        return;
       }
+      setView(next);
+      live();
     });
     events.addEventListener('done', (event: MessageEvent<string>) => {
       // The server closes after `done`, and EventSource would reconnect if we didn't.
       events.close();
-      const reason = (JSON.parse(event.data) as { reason?: unknown } | null)?.reason;
-      if (reason === 'gone') setGone(true);
+      clearTimeout(noticeTimer);
+      if (parseDoneReason(event.data) === 'gone') setGone(true);
     });
     events.addEventListener('error', () => {
-      // CLOSED means the browser gave up (a 401 after the session ended, say);
-      // otherwise it's retrying by itself.
-      setConnection(events.readyState === EventSource.CLOSED ? 'lost' : 'reconnecting');
+      clearTimeout(noticeTimer);
+      // CLOSED means the browser gave up (a 401 after the session ended, or a
+      // 404 for a scan deleted in the meantime); reloading shows which.
+      // Otherwise it's retrying by itself.
+      if (events.readyState === EventSource.CLOSED) {
+        setConnection('lost');
+        return;
+      }
+      noticeTimer = setTimeout(() => setConnection('reconnecting'), RECONNECT_NOTICE_MS);
     });
-    return () => events.close();
+    return () => {
+      clearTimeout(noticeTimer);
+      events.close();
+    };
   }, [initial]);
 
-  const explained = view.groups.filter((g) => g.explanation !== null).length;
+  const explained = explainedCount(view);
   const total = view.groups.length;
   const waiting = view.stage === 'queued' || view.stage === 'scanning';
-  const stillGoing = !isFinal(view);
+  const connectionNote = connectionMessage(connection);
+  const retry = retryNote(view);
+  const failure = failureDetail(view);
+  const skipped = skippedNote(view);
 
   return (
     <div className="mt-6">
       <div role="status" className="text-lg font-medium">
-        {stageMessage(view)}
+        <p>{gone ? 'This scan no longer exists.' : stageMessage(view)}</p>
+        {connectionNote && !gone ? (
+          <p className="mt-1 text-base font-normal text-neutral-700">{connectionNote}</p>
+        ) : null}
       </div>
 
-      {stillGoing && connection === 'live' ? (
-        <div className="mt-3">
-          {waiting ? (
-            <progress aria-label="Scan progress" className="block w-full max-w-md" />
-          ) : (
-            <>
-              <progress
-                aria-label="Explanations written"
-                max={total}
-                value={explained}
-                className="block w-full max-w-md"
-              />
-              <p className="mt-1 text-neutral-700">
-                {explained} of {plural(total, 'rule', 'rules')} explained
-              </p>
-            </>
-          )}
-        </div>
-      ) : null}
-
-      {view.stage === 'queued' && view.error ? (
-        <p className="mt-3 text-neutral-700">
-          The last attempt didn’t work, so it’s trying again. Reason: {view.error}
-        </p>
-      ) : null}
-      {view.stage === 'explaining' && view.explainStatus === 'pending' && view.explainError ? (
-        <p className="mt-3 text-neutral-700">
-          Writing explanations didn’t work, so it’s trying again. Reason: {view.explainError}
-        </p>
-      ) : null}
-
-      {view.stage === 'failed' ? (
-        <p role="alert" className="mt-3 font-medium text-red-800">
-          Error: {view.error ?? 'The scan failed.'}
-        </p>
-      ) : null}
-      {view.stage === 'done' && view.explainStatus === 'failed' ? (
-        <p role="alert" className="mt-3 font-medium text-red-800">
-          Error: explanations couldn’t be written
-          {view.explainError ? ` (${view.explainError})` : ''}. The issues below show axe’s own
-          descriptions.
-        </p>
-      ) : null}
-      {view.stage === 'done' && view.explainStatus === 'completed' && view.explainError ? (
-        <p className="mt-3 text-neutral-700">Note: {view.explainError}</p>
-      ) : null}
-
-      {connection === 'reconnecting' ? (
-        <p role="status" className="mt-3 text-neutral-700">
-          Lost the live connection. Trying to reconnect.
-        </p>
-      ) : null}
-      {connection === 'lost' ? (
-        <p role="alert" className="mt-3 font-medium text-red-800">
-          Error: the live connection ended, so this page may be out of date. Reload the page to see
-          the latest.
-        </p>
-      ) : null}
       {gone ? (
-        <p role="alert" className="mt-3 font-medium text-red-800">
-          Error: this scan no longer exists.
+        <p className="mt-3 font-medium text-red-800">
+          Error: this scan was deleted. Start a new scan to see results.
         </p>
-      ) : null}
+      ) : (
+        <>
+          {!isFinal(view) && connection === 'live' ? (
+            <div className="mt-3">
+              {waiting ? (
+                <progress aria-label="Scan progress" className="block w-full max-w-md" />
+              ) : (
+                <>
+                  <progress
+                    aria-label="Explanations written"
+                    max={total}
+                    value={explained}
+                    className="block w-full max-w-md"
+                  />
+                  <p className="mt-1 text-neutral-700">
+                    {explained} of {plural(total, 'rule', 'rules')} explained
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
 
-      {view.stage === 'done' && view.issueCount === 0 && view.explainStatus === null ? (
-        <p className="mt-6">
-          axe found no issues on this page. That doesn’t mean the page is fully accessible:
-          automated checks catch only some problems.
-        </p>
-      ) : null}
+          {retry ? <p className="mt-3 text-neutral-700">{retry}</p> : null}
+          {failure ? <p className="mt-3 font-medium text-red-800">{failure}</p> : null}
+          {skipped ? <p className="mt-3 text-neutral-700">{skipped}</p> : null}
 
-      {view.groups.length > 0 ? (
-        <section aria-labelledby="issues-heading" className="mt-8">
-          <h2 id="issues-heading" className="text-xl font-semibold">
-            Issues by rule
-          </h2>
-          <ol className="mt-4 space-y-4">
-            {view.groups.map((group) => (
-              <li key={group.groupKey}>
-                <IssueGroup group={group} stage={view.stage} explainStatus={view.explainStatus} />
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
+          {view.stage === 'done' && view.issueCount === 0 && view.explainStatus === null ? (
+            <p className="mt-6">
+              axe found no issues on this page. That doesn’t mean the page is fully accessible:
+              automated checks catch only some problems.
+            </p>
+          ) : null}
+
+          {view.groups.length > 0 ? (
+            <section aria-labelledby="issues-heading" className="mt-8">
+              <h2 id="issues-heading" className="text-xl font-semibold">
+                Issues by rule
+              </h2>
+              <ol className="mt-4 space-y-4">
+                {view.groups.map((group) => (
+                  <li key={group.groupKey}>
+                    <IssueGroup
+                      group={group}
+                      missingExplanation={missingExplanation(view)}
+                      showPage={view.targets.length > 1}
+                    />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
