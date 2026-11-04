@@ -5,6 +5,9 @@ import {
   EvalCase,
   EvalCaseObject,
   EvalResult,
+  ExplainJobPayload,
+  groupIssues,
+  type Impact,
   IssueExplanation,
   PatchProposal,
   RelativePath,
@@ -87,6 +90,74 @@ describe('ScanJobPayload', () => {
   it('rejects a missing or malformed scan id', () => {
     expect(ScanJobPayload.safeParse({}).success).toBe(false);
     expect(ScanJobPayload.safeParse({ scanId: 'scan-1' }).success).toBe(false);
+  });
+});
+
+describe('ExplainJobPayload', () => {
+  it('accepts a scan id and rejects anything else', () => {
+    const scanId = '0b6c1f9e-2a4d-4c8e-9f3a-7d5e6b1c2a40';
+    expect(ExplainJobPayload.parse({ scanId })).toEqual({ scanId });
+    expect(ExplainJobPayload.safeParse({ scanId: 'scan-1' }).success).toBe(false);
+    expect(ExplainJobPayload.safeParse({ scanId, extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('groupIssues', () => {
+  const row = (ruleId: string, impact: Impact, n = 0) => ({
+    groupKey: ruleId,
+    ruleId,
+    impact,
+    n,
+  });
+
+  it('groups by key and counts', () => {
+    const groups = groupIssues([row('a', 'minor', 1), row('b', 'minor'), row('a', 'minor', 2)]);
+    const a = groups.find((g) => g.groupKey === 'a');
+    expect(a?.count).toBe(2);
+    expect(a?.issues.map((i) => i.n)).toEqual([1, 2]);
+  });
+
+  it('sorts by impact, then count, then rule id', () => {
+    const groups = groupIssues([
+      row('z-minor-many', 'minor'),
+      row('z-minor-many', 'minor'),
+      row('z-minor-many', 'minor'),
+      row('critical-one', 'critical'),
+      row('serious-two', 'serious'),
+      row('serious-two', 'serious'),
+      row('serious-one-b', 'serious'),
+      row('serious-one-a', 'serious'),
+      row('serious-three', 'serious'),
+      row('serious-three', 'serious'),
+      row('serious-three', 'serious'),
+    ]);
+    expect(groups.map((g) => g.groupKey)).toEqual([
+      'critical-one',
+      'serious-three',
+      'serious-two',
+      'serious-one-a',
+      'serious-one-b',
+      'z-minor-many',
+    ]);
+  });
+
+  it("takes the highest impact among a group's issues", () => {
+    const [group] = groupIssues([
+      row('color-contrast', 'moderate'),
+      row('color-contrast', 'critical'),
+      row('color-contrast', 'minor'),
+    ]);
+    expect(group?.impact).toBe('critical');
+  });
+
+  it('gives the same order whatever order the issues arrive in', () => {
+    const issues = [row('b', 'serious'), row('a', 'serious'), row('c', 'critical')];
+    const forward = groupIssues(issues).map((g) => g.groupKey);
+    expect(groupIssues([...issues].reverse()).map((g) => g.groupKey)).toEqual(forward);
+  });
+
+  it('returns nothing for no issues', () => {
+    expect(groupIssues([])).toEqual([]);
   });
 });
 

@@ -24,6 +24,7 @@ RUN npm ci --workspace @curbcut/worker --omit=dev \
     && npm cache clean --force
 
 COPY tsconfig.base.json ./
+COPY packages/agent/ packages/agent/
 COPY packages/core/ packages/core/
 COPY packages/db/ packages/db/
 COPY apps/worker/ apps/worker/

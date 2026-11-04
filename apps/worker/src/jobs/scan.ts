@@ -1,6 +1,6 @@
 // The `scan` job (#5): scans each of a scan's targets and stores the issues.
-import { ScanJobPayload, type A11yIssue } from '@curbcut/core';
-import { issues, scans, type Db } from '@curbcut/db';
+import { ScanJobPayload, type A11yIssue, type ExplainJobPayload } from '@curbcut/core';
+import { issues, jobs, scans, type Db } from '@curbcut/db';
 import { eq, sql } from 'drizzle-orm';
 import { PermanentError } from '../errors';
 import type { Job } from '../queue';
@@ -62,6 +62,12 @@ export function scanJob(db: Db, scanner: Pick<Scanner, 'scan'>): JobHandler {
           .update(scans)
           .set({ status: 'completed', axeVersion, finishedAt: sql`now()` })
           .where(eq(scans.id, scanId));
+        // In the same transaction, so a completed scan with issues always has
+        // its explain job, and a scan that was retried never has two.
+        if (found.length > 0) {
+          const payload: ExplainJobPayload = { scanId };
+          await tx.insert(jobs).values({ type: 'explain', payload });
+        }
       };
     },
 

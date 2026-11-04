@@ -4,3 +4,5 @@ export * from './llm/ledger';
 export * from './llm/pricing';
 export * from './llm/provider';
 export { requestKey, type LLMMode, type SendMessage } from './llm/replay';
+export * from './explain';
+export * from './prompts/explain';

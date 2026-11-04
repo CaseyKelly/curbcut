@@ -178,6 +178,13 @@ export const issues = pgTable(
      * count) is derived when reading, so it can't disagree within a group.
      */
     groupKey: text('group_key').notNull(),
+    /**
+     * The group's explanation, set on every issue in the group once it's
+     * explained (#7). Null while pending, or if the group couldn't be explained.
+     */
+    explanationId: uuid('explanation_id').references((): AnyPgColumn => explanations.id, {
+      onDelete: 'set null',
+    }),
     createdAt,
   },
   (t) => [

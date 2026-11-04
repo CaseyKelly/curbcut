@@ -1,7 +1,9 @@
-// Job runner: claims jobs from Postgres and runs scans (#5), and later agent runs.
+// Job runner: claims jobs from Postgres and runs scans (#5) and explanations (#7), and later agent runs.
 import { hostname } from 'node:os';
+import { createDbLedger, createProvider } from '@curbcut/agent';
 import { createDb } from '@curbcut/db';
 import { startHealthServer } from './health';
+import { explainJob } from './jobs/explain';
 import { scanJob } from './jobs/scan';
 import { createQueue } from './queue';
 import { Scanner } from './scanner/scanner';
@@ -16,10 +18,12 @@ if (allowPrivate && process.env.NODE_ENV === 'production') {
 
 const db = createDb();
 const scanner = new Scanner(allowPrivate ? { isBlockedAddress: () => false } : {});
+// Fails at startup, not on the first explain job, if the LLM settings are wrong.
+const provider = createProvider({ ledger: createDbLedger(db) });
 const worker = createWorker({
   // On Fly the hostname is the machine id.
   queue: createQueue(db, { workerId: `${hostname()}:${process.pid}` }),
-  handlers: { scan: scanJob(db, scanner) },
+  handlers: { scan: scanJob(db, scanner), explain: explainJob(db, provider) },
 });
 const health = await startHealthServer(Number(process.env.PORT ?? 8080), worker.healthy);
 
