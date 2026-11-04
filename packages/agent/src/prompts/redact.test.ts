@@ -337,6 +337,101 @@ describe('redactHtml: speed on hostile input', () => {
   ])('stays fast: %s', (_name, html) => fast(html));
 });
 
+describe('redactHtml: entities, case, and the last review', () => {
+  it.each([
+    // Attribute values are written with entities: `&amp;` for `&`, `&quot;` for a quote.
+    [
+      '<div style="background:url(&quot;/a.png?w=1&amp;sig=SECRET&quot;)">',
+      '<div style="background:url(&quot;/a.png&quot;)">',
+    ],
+    ['<div style="background:url(/a.png?w=1;sig=SECRET)">', '<div style="background:url(/a.png)">'],
+    ['<div style="background:url(/a.png?w=1,sig=SECRET)">', '<div style="background:url(/a.png)">'],
+    [
+      `<div style="background:url('/a.png?q=a b&amp;sig=SECRET')">`,
+      `<div style="background:url('/a.png')">`,
+    ],
+    [
+      '<div style="background:url(&#39;/a.png?w=1&amp;sig=SECRET&#39;) red">',
+      '<div style="background:url(&#39;/a.png&#39;) red">',
+    ],
+    [
+      '<div style="background:url(&quot;data:image/png;base64,SECRET&quot;)">',
+      '<div style="background:url(&quot;data:&quot;)">',
+    ],
+  ])('strips a style URL with entities: %s', (html, expected) => {
+    const out = redactHtml(html);
+    expect(out).not.toContain('SECRET');
+    expect(out).toBe(expected);
+  });
+
+  it('keeps the semicolon of an entity in a URL, and still strips path parameters', () => {
+    expect(redactHtml('<a href="/search/a&amp;b/results">x</a>')).toBe(
+      '<a href="/search/a&amp;b/results">x</a>',
+    );
+    expect(redactHtml('<a href="/a&#38;b;jsessionid=SECRET/c">x</a>')).toBe(
+      '<a href="/a&#38;b/c">x</a>',
+    );
+  });
+
+  it.each(['title', 'textarea', 'script', 'style'])(
+    'finds the end of a %s body even when letters change length when lowercased',
+    (tag) => {
+      // `İ`.toLowerCase() is two code units, so offsets taken from a lowercased copy drift.
+      const html = `<${tag}>${'İ'.repeat(12)}</${tag}><input type="password" value="SECRET">`;
+      const out = redactHtml(html);
+      expect(out).not.toContain('SECRET');
+      expect(out).toContain('<input type="password" value="">');
+    },
+  );
+
+  it('finds an uppercase closing tag', () => {
+    expect(redactHtml('<TEXTAREA>SECRET</TEXTAREA><b>x</b>')).toBe('<TEXTAREA></TEXTAREA><b>x</b>');
+  });
+
+  it.each([
+    [
+      '<meta http-equiv="refresh" content="0; https://x.test/?t=SECRET">',
+      '<meta http-equiv="refresh" content="0; https://x.test/">',
+    ],
+    [
+      '<meta http-equiv="refresh" content="0;/x?t=SECRET">',
+      '<meta http-equiv="refresh" content="0;/x">',
+    ],
+    [
+      '<meta http-equiv="refresh" content="5, /x?t=SECRET">',
+      '<meta http-equiv="refresh" content="5, /x">',
+    ],
+    [
+      '<meta http-equiv="refresh" content="0; URL=/x?t=SECRET">',
+      '<meta http-equiv="refresh" content="0; URL=/x">',
+    ],
+    ['<meta http-equiv="refresh" content="30">', '<meta http-equiv="refresh" content="30">'],
+  ])('cleans a meta refresh URL: %s', (html, expected) => {
+    expect(redactHtml(html)).toBe(expected);
+  });
+
+  it('keeps the text of an SVG title, but not a page title', () => {
+    expect(redactHtml('<svg role="img"><title>Sales chart</title><path d="M0"></path></svg>')).toBe(
+      '<svg role="img"><title>Sales chart</title><path d=""></path></svg>',
+    );
+    expect(redactHtml('<title>Fernleaf</title><p>x</p>')).toBe('<title></title><p>x</p>');
+    // After the SVG closes, a title is a page title again.
+    const out = redactHtml(
+      '<svg><title>a</title></svg><title><a title="</title><input type="password" value="SECRET">',
+    );
+    expect(out).not.toContain('SECRET');
+  });
+
+  it('keeps usemap, which area-alt involves, and blanks download and pattern', () => {
+    expect(redactHtml('<img usemap="#planets"><area alt="Sun" href="/sun">')).toBe(
+      '<img usemap="#planets"><area alt="Sun" href="/sun">',
+    );
+    expect(redactHtml('<a href="/f" download="SECRET.pdf">x</a><input pattern="SECRET">')).toBe(
+      '<a href="/f" download="">x</a><input pattern="">',
+    );
+  });
+});
+
 describe('redactHtml: parsing', () => {
   it('returns text with no tags unchanged', () => {
     expect(redactHtml('Price: 3 < 5 and 7 > 2')).toBe('Price: 3 < 5 and 7 > 2');

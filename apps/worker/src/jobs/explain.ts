@@ -42,7 +42,7 @@ function scanIdOf(job: Job): string {
  * - `rejected`: the API refused this request as bad (400, 413, 422). Usually
  *   the group's input, so skip it, but a spend limit or an empty credit
  *   balance is also a 400, and then every call fails the same way (see
- *   `MAX_EARLY_REJECTIONS`).
+ *   `MAX_CONSECUTIVE_REJECTIONS`).
  * - `permanent`: a bad key or model (401, 402, 403, 404), a spent budget, or a
  *   missing recording. A retry can't fix it.
  * - `transient`: a dropped connection, a timeout, 429, 5xx. It may pass, so
@@ -66,11 +66,12 @@ function classify(err: unknown): Failure {
 }
 
 /**
- * Rejections before the API has answered anything, after which the job fails
- * instead of skipping group after group. The account hitting its spend limit
- * looks like this, and skipping would report a failed job as a few bad groups.
+ * Rejections in a row, with no call answered in between, after which the job
+ * fails instead of skipping group after group. The account hitting its spend
+ * limit looks like this, whether it happens at the first call or partway
+ * through, and skipping would report a failed job as a pile of bad groups.
  */
-const MAX_EARLY_REJECTIONS = 3;
+const MAX_CONSECUTIVE_REJECTIONS = 3;
 
 /**
  * Transient errors in one attempt before new calls stop. One group that
@@ -95,6 +96,12 @@ async function forEachLimited<T>(
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
 }
+
+/** Longest reason in a scan's note, so the groups after it still fit. */
+const MAX_REASON_LENGTH = 200;
+
+const shorten = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -191,7 +198,7 @@ export function explainJob(
       // flight finish, since they're already paid for.
       const skipped: { groupKey: string; reason: string }[] = [];
       const transient: Error[] = [];
-      let rejected = 0;
+      let consecutiveRejections = 0;
       /** Calls the API answered, with a usable output or not. */
       let answered = 0;
       let stopped: Error | undefined;
@@ -203,6 +210,7 @@ export function explainJob(
           try {
             const result = await explainGroup({ db, provider }, group.issues, { runId, signal });
             answered++;
+            consecutiveRejections = 0;
             await link(group.groupKey, result.explanationId);
           } catch (err) {
             // Without a lock the answer isn't ours to store, and more calls are waste.
@@ -212,9 +220,13 @@ export function explainJob(
             }
             const failure = classify(err);
             if (failure === 'output' || failure === 'rejected') {
-              if (failure === 'output') answered++;
-              else if (++rejected >= MAX_EARLY_REJECTIONS && answered === 0) {
-                stopped ??= new PermanentError(`The API rejected every request: ${describe(err)}`);
+              if (failure === 'output') {
+                answered++;
+                consecutiveRejections = 0;
+              } else if (++consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS) {
+                stopped ??= new PermanentError(
+                  `The API rejected ${consecutiveRejections} requests in a row: ${describe(err)}`,
+                );
               }
               skipped.push({ groupKey: group.groupKey, reason: describe(err) });
               log(`explain: skipped ${group.groupKey} for scan ${scanId}: ${String(err)}`);
@@ -229,9 +241,16 @@ export function explainJob(
       );
       signal.throwIfAborted();
       if (stopped) throw stopped;
-      // Every call was rejected, so it wasn't the groups. (With fewer than
-      // `MAX_EARLY_REJECTIONS` groups the check above never fires.)
-      if (answered === 0 && skipped.length > 0 && skipped.length === uncached.length) {
+      // Every call was rejected and none came from the cache, so it wasn't the
+      // groups. (With fewer than `MAX_CONSECUTIVE_REJECTIONS` groups the check
+      // above never fires.) A rescan with some cached groups is a different
+      // case: the one uncached group is just a bad one.
+      if (
+        cachedGroups === 0 &&
+        answered === 0 &&
+        skipped.length > 0 &&
+        skipped.length === uncached.length
+      ) {
         throw new PermanentError(`The API rejected every request: ${skipped[0]!.reason}`);
       }
       // Some groups hit transient errors: retry, and the cache makes the groups
@@ -246,12 +265,16 @@ export function explainJob(
       // fail the same way. (If another group's error does retry it, they're
       // asked again until #55 remembers failures.) If nothing was explained, say so.
       const nothingExplained = groups.length > 0 && skipped.length === groups.length;
+      // The reason first: the list of groups can fill the whole note.
       const note =
         skipped.length > 0
-          ? `${skipped.length} of ${groups.length} groups couldn't be explained: ${skipped
-              .map((s) => s.groupKey)
+          ? `${skipped.length} of ${groups.length} groups couldn't be explained. First reason: ${shorten(
+              skipped[0]!.reason,
+              MAX_REASON_LENGTH,
+            )}. Groups: ${skipped
+              .map((g) => g.groupKey)
               .sort()
-              .join(', ')}. First reason: ${skipped[0]!.reason}`.slice(0, MAX_NOTE_LENGTH)
+              .join(', ')}`.slice(0, MAX_NOTE_LENGTH)
           : null;
       return async (tx) => {
         await tx

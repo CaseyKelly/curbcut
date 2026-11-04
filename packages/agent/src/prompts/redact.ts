@@ -18,9 +18,11 @@
 // boundaries can't be trusted. Comments, and the bodies of elements whose
 // content isn't markup, are dropped, so text in them can't pass for a tag.
 //
-// What it can't catch: text content; a token in a URL path (`/reset/SECRET`);
-// a secret in `id` or in free text in `title` or `aria-label` that isn't
-// shaped like a URL.
+// What it can't catch: text content; a secret in the value of `id`, `class`,
+// `name`, or another plain attribute; a token in a URL path (`/reset/SECRET`)
+// or a plain fragment (`#SECRET`); a password containing `/` or `@` in a URL;
+// and a secret in free text in `title` or `aria-label` that isn't shaped like
+// a URL (`x.test/p;jsessionid=SECRET` with no scheme or leading slash).
 
 /** Input types whose `value` is the visible label, which rules like `button-name` need. */
 const VISIBLE_VALUE_TYPES = new Set(['submit', 'button', 'reset']);
@@ -40,7 +42,7 @@ const TEXT_ATTRIBUTES = new Set(['title', 'alt', 'placeholder', 'label', 'summar
 
 /** Attributes whose value is plain, and what rules and explanations are about. */
 const PLAIN_ATTRIBUTES = new Set(
-  'id class role lang xml:lang dir tabindex type name for form scope headers colspan rowspan accesskey autocomplete inputmode width height charset http-equiv rel target method enctype download media sizes loading min max step maxlength minlength pattern size rows cols wrap open start reversed span kind srclang hreflang decoding crossorigin referrerpolicy translate spellcheck draggable contenteditable viewbox xmlns focusable'.split(
+  'id class role lang xml:lang dir tabindex usemap type name for form scope headers colspan rowspan accesskey autocomplete inputmode width height charset http-equiv rel target method enctype media sizes loading min max step maxlength minlength size rows cols wrap open start reversed span kind srclang hreflang decoding crossorigin referrerpolicy translate spellcheck draggable contenteditable viewbox xmlns focusable'.split(
     ' ',
   ),
 );
@@ -186,13 +188,17 @@ function readStartTag(html: string, start: number): StartTag {
  * linear scan, since this can see up to 20,000 characters.
  */
 function scrubUrl(url: string): string {
-  return url
-    .trim()
-    .replace(/^(data:[^;,]*|javascript:|vbscript:)[\s\S]*$/i, '$1')
-    .replace(/\/\/[^/?#@\s]*@/g, '//')
-    .replace(/\?[\s\S]*$/, '')
-    .replace(/;[^/?#]*/g, '')
-    .replace(/#(?![\w-]*$)[\s\S]*$/, '');
+  return (
+    url
+      .trim()
+      .replace(/^(data:[^;,]*|javascript:|vbscript:)[\s\S]*$/i, '$1')
+      .replace(/\/\/[^/?#@\s]*@/g, '//')
+      .replace(/\?[\s\S]*$/, '')
+      // Not the `;` that ends an entity like `&amp;`.
+      .replace(/(?<!&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+));[^/?#]*/gi, '')
+      // Not the `#` of a numeric entity like `&#38;`.
+      .replace(/(?<!&)#(?![\w-]*$)[\s\S]*$/, '')
+  );
 }
 
 /** Whether a word in free text looks like a URL, so "Delete?" stays and `/x?token=1` goes. */
@@ -218,12 +224,19 @@ function scrubText(text: string): string {
     .join('');
 }
 
+/**
+ * What a URL in a style declaration runs through: everything up to the `)` or
+ * the closing quote. Attribute values are written with entities, so the quote
+ * can be `&quot;` and the `&` in a query is `&amp;`; neither ends the URL.
+ */
+const STYLE_URL_BODY = '(?:&(?!quot;|#34;|#39;|apos;)|[^&)"\'])*';
+
 /** A style declaration: `url(...)` can sit anywhere in it, in several forms. */
 function scrubStyle(style: string): string {
   return style
-    .replace(/data:[^;,)"'\s]*[;,][^)"'\s]*/gi, 'data:')
-    .replace(/\/\/[^/?#@\s)"']*@/g, '//')
-    .replace(/\?[^\s)"',;]*/g, '');
+    .replace(new RegExp(`data:[^;,)"'&]*[;,]${STYLE_URL_BODY}`, 'gi'), 'data:')
+    .replace(/\/\/[^/?#@\s)"'&]*@/g, '//')
+    .replace(new RegExp(`\\?${STYLE_URL_BODY}`, 'g'), '');
 }
 
 /** The attribute as it should be written, or undefined to keep it as it was. */
@@ -249,9 +262,10 @@ function redactAttribute(
     // meta content that rules are about.
     if (context.attribute('name')?.value?.trim().toLowerCase() === 'viewport') return undefined;
     if (context.attribute('http-equiv')?.value?.trim().toLowerCase() === 'refresh') {
+      // `0;url=/x`, `0; url=/x`, or a bare `0; /x`: the URL is whatever follows the delay.
       return rewrite(
         attr.value.replace(
-          /(url\s*=\s*)([\s\S]*)$/i,
+          /^([^;,]*[;,]\s*(?:url\s*=\s*)?)([\s\S]*)$/i,
           (_m, p: string, u: string) => p + scrubUrl(u),
         ),
       );
@@ -297,6 +311,8 @@ function redactStartTag(tag: StartTag): string {
 export function redactHtml(html: string): string {
   const n = html.length;
   let lower: string | undefined;
+  /** An SVG `<title>` is an ordinary element with text people read, not raw text. */
+  let inSvg = false;
   let out = '';
   let i = 0;
   while (i < n) {
@@ -313,6 +329,7 @@ export function redactHtml(html: string): string {
       continue;
     }
     if (!/[a-z]/i.test(html.charAt(lt + 1))) {
+      if (/^<\/svg\b/i.test(html.slice(lt, lt + 7))) inSvg = false;
       out += '<';
       i = lt + 1;
       continue;
@@ -321,9 +338,13 @@ export function redactHtml(html: string): string {
     const tag = readStartTag(html, lt);
     out += redactStartTag(tag);
     i = tag.end;
+    if (tag.tagName === 'svg' && !tag.tail.endsWith('/>')) inSvg = true;
 
-    if (RAW_TEXT_ELEMENTS.has(tag.tagName) && !tag.tail.endsWith('/>')) {
-      lower ??= html.toLowerCase();
+    const rawText = RAW_TEXT_ELEMENTS.has(tag.tagName) && !(inSvg && tag.tagName === 'title');
+    if (rawText && !tag.tail.endsWith('/>')) {
+      // ASCII only: `toLowerCase` changes the length of some letters (`İ`), and
+      // the offsets here are into `html`.
+      lower ??= html.replace(/[A-Z]/g, (c) => c.toLowerCase());
       const close = lower.indexOf(`</${tag.tagName}`, i);
       i = close === -1 ? n : close;
     }

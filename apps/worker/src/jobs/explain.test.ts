@@ -269,7 +269,8 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     expect(agentRun!.costUsd).toBeCloseTo(3 * CALL_COST, 6);
     const scan = await scanOf(scanId);
     expect(scan).toMatchObject({ explainStatus: 'completed' });
-    expect(scan.explainError).toContain(`1 of 2 groups couldn't be explained: ${bad}`);
+    expect(scan.explainError).toContain("1 of 2 groups couldn't be explained. First reason:");
+    expect(scan.explainError).toContain(`Groups: ${bad}`);
   });
 
   it('marks the scan failed when no group could be explained', async () => {
@@ -432,7 +433,7 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     it('fails the job instead of skipping every group', async () => {
       const { scanId } = await manyGroups(8);
       const { sent, handler } = setup(spendLimit, { concurrency: 1 });
-      await expect(run(handler, scanId)).rejects.toThrow(/rejected every request: HTTP 400/);
+      await expect(run(handler, scanId)).rejects.toThrow(/rejected 3 requests in a row: HTTP 400/);
       expect(sent).toHaveBeenCalledTimes(3);
     });
 
@@ -458,11 +459,13 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
       expect(rows.find((r) => r.ruleId === cachedRule)!.explanationId).not.toBeNull();
     });
 
-    it('skips bad groups as before once the API has answered a call', async () => {
+    it('skips bad groups as before while the API keeps answering in between', async () => {
       const { rules, scanId } = await manyGroups(6);
+      // Groups are asked biggest first: g0 and g3 succeed, so no 3 rejections come in a row.
+      const answers = new Set([rules[0], rules[3]]);
       const { sent, handler } = setup(
         (params) =>
-          JSON.stringify(params.messages).includes(rules[0]!)
+          [...answers].some((r) => JSON.stringify(params.messages).includes(r!))
             ? Promise.resolve(reply(explanationJson))
             : Promise.reject(apiError(400)),
         { concurrency: 1 },
@@ -471,8 +474,46 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
       expect(sent).toHaveBeenCalledTimes(6);
       const scan = await scanOf(scanId);
       expect(scan.explainStatus).toBe('completed');
-      expect(scan.explainError).toContain("5 of 6 groups couldn't be explained");
+      expect(scan.explainError).toContain("4 of 6 groups couldn't be explained");
       expect(scan.explainError).toContain('First reason: HTTP 400');
+    });
+
+    it('fails the job when a spend limit is reached partway through', async () => {
+      const { scanId } = await manyGroups(20);
+      let calls = 0;
+      const { sent, handler } = setup(
+        () =>
+          ++calls <= 5 ? Promise.resolve(reply(explanationJson)) : Promise.reject(apiError(400)),
+        { concurrency: 1 },
+      );
+      await expect(run(handler, scanId)).rejects.toThrow(/rejected 3 requests in a row/);
+      // 5 answered, then 3 rejected and no more.
+      expect(sent).toHaveBeenCalledTimes(8);
+      const rows = await issuesOf(scanId);
+      expect(new Set(rows.filter((r) => r.explanationId).map((r) => r.ruleId)).size).toBe(5);
+    });
+
+    it('does not fail a rescan because one group is always rejected', async () => {
+      const rules = Array.from({ length: 6 }, (_, i) => newRule(`r${i}`));
+      const bad = rules[2]!;
+      const stub: SendMessage = (params) =>
+        JSON.stringify(params.messages).includes(bad)
+          ? Promise.reject(apiError(413))
+          : Promise.resolve(reply(explanationJson));
+      const scanOf6 = () => newScan(rules.map((ruleId, i) => ({ ruleId, count: 6 - i })));
+
+      const first = await scanOf6();
+      await run(setup(stub, { concurrency: 1 }).handler, first);
+      expect(await scanOf(first)).toMatchObject({ explainStatus: 'completed' });
+
+      // Five groups now come from the cache; the sixth is rejected again.
+      const second = await scanOf6();
+      const { sent, handler } = setup(stub, { concurrency: 1 });
+      await run(handler, second);
+      expect(sent).toHaveBeenCalledTimes(1);
+      const scan = await scanOf(second);
+      expect(scan).toMatchObject({ explainStatus: 'completed' });
+      expect(scan.explainError).toContain("1 of 6 groups couldn't be explained");
     });
   });
 
@@ -491,6 +532,21 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
       }),
     ).rejects.toBeInstanceOf(LostJobError);
     expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the reason before the list of groups in the note, so a long list cannot cut it off', async () => {
+    const scanId = await newScan(
+      Array.from({ length: 40 }, () => ({
+        ruleId: newRule('a-long-rule-name-for-the-note'),
+        count: 1,
+      })),
+    );
+    const { handler } = setup(() => Promise.resolve(reply('not json')));
+    await run(handler, scanId);
+    const scan = await scanOf(scanId);
+    expect(scan.explainStatus).toBe('failed');
+    expect(scan.explainError).toMatch(/^40 of 40 groups couldn't be explained\. First reason: /);
+    expect(scan.explainError!.length).toBeLessThanOrEqual(500);
   });
 
   it('lets a transient error through for the queue to retry, and ends the attempt’s run', async () => {
