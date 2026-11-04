@@ -1,10 +1,12 @@
 {
   "id": "image-alt-product-photo",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "A product photo has no alt attribute. The product name is the right alt text.",
-  "category": "images",
-  "tags": [],
+  "category": "text-alternatives",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "PlantTile.tsx",
   "issue": {
     "ruleId": "image-alt",

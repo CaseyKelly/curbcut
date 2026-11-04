@@ -1,0 +1,30 @@
+{
+  "id": "aria-required-parent-orphan-menuitem",
+  "version": 1,
+  "framework": "react",
+  "description": "A link has role=\"menuitem\" with no menu around it, in what is really a plain list of links.",
+  "category": "aria",
+  "tags": [],
+  "filePath": "AccountLinks.tsx",
+  "issue": {
+    "ruleId": "aria-required-parent",
+    "impact": "critical",
+    "help": "Certain ARIA roles must be contained by particular parents",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-required-parent?application=playwright",
+    "wcag": [
+      "1.3.1"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "a",
+    "html": "<a href=\"/account/sign-out\" role=\"menuitem\">Sign out</a>",
+    "failureSummary": "Fix any of the following:\n  Required ARIA parents role not present: menu, menubar, group",
+    "fingerprint": "aria-required-parent:a"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 3,
+      "end": 7
+    }
+  ]
+}

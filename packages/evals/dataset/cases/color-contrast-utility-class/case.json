@@ -1,0 +1,34 @@
+{
+  "id": "color-contrast-utility-class",
+  "version": 1,
+  "framework": "react",
+  "description": "Text uses a Tailwind-style utility class that is too light. A darker utility is already defined in the same file.",
+  "category": "contrast",
+  "tags": [],
+  "filePath": "CareTip.tsx",
+  "issue": {
+    "ruleId": "color-contrast",
+    "impact": "serious",
+    "help": "Elements must meet minimum color contrast ratio thresholds",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+    "wcag": [
+      "1.4.3"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "p",
+    "html": "<p class=\"text-gray-400\">Water once the top inch of soil is dry.</p>",
+    "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.53 (foreground color: #9ca3af, background color: #ffffff, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1",
+    "fingerprint": "color-contrast:p"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 3,
+      "end": 4
+    },
+    {
+      "start": 11,
+      "end": 11
+    }
+  ]
+}

@@ -162,6 +162,7 @@ try {
       input: w.input,
       patched: w.patched!,
       testPath: existsSync(testPath) ? testPath : undefined,
+      targetRule: c.issue.ruleId,
     };
   });
   const builds = await scoreBuilds(join(scratch, 'build'), checks);

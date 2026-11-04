@@ -1,10 +1,12 @@
 {
   "id": "link-name-unclear-destination",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "An icon-only link in an order table has no name, and neither the icon nor the URL says whether it reorders, refunds, or returns. A human has to say what it does.",
-  "category": "names",
-  "tags": [],
+  "category": "needs-human",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "OrderHistory.tsx",
   "issue": {
     "ruleId": "link-name",

@@ -1,0 +1,30 @@
+{
+  "id": "aria-prohibited-attr-stock-dot",
+  "version": 1,
+  "framework": "react",
+  "description": "An empty span uses aria-label to say a product is in stock, but aria-label is not allowed on a span with no role.",
+  "category": "aria",
+  "tags": [],
+  "filePath": "StockDot.tsx",
+  "issue": {
+    "ruleId": "aria-prohibited-attr",
+    "impact": "serious",
+    "help": "Elements must only use permitted ARIA attributes",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-prohibited-attr?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "span",
+    "html": "<span aria-label=\"In stock\" style=\"display: inline-block; width: 8px; height: 8px; background: rgb(21, 128, 61);\"></span>",
+    "failureSummary": "Fix all of the following:\n  aria-label attribute cannot be used on \"span\" elements with no valid role attribute.",
+    "fingerprint": "aria-prohibited-attr:span"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 5,
+      "end": 8
+    }
+  ]
+}

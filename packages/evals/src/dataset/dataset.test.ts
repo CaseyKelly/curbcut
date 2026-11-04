@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { validateDataset } from './dataset';
+import { CATEGORY_TARGETS, countBy, validateDataset } from './dataset';
 
 const INPUT = `export default function Tile() {
   return (
@@ -40,7 +40,7 @@ const writeCase = (id: string, overrides: Record<string, unknown> = {}) =>
       version: 1,
       framework: 'react',
       description: 'An image with no alt.',
-      category: 'images',
+      category: 'text-alternatives',
       filePath: 'Tile.tsx',
       issue,
       expectedOutcome: 'fix',
@@ -71,9 +71,37 @@ describe('validateDataset', () => {
 
   it('passes a no-change case with no expected/', () => {
     writeManifest(['image-alt', 'already-fine']);
-    writeCase('already-fine', { expectedOutcome: 'no_change_needed', allowedLines: undefined });
+    writeCase('already-fine', {
+      category: 'no-change',
+      expectedOutcome: 'no_change_needed',
+      allowedLines: undefined,
+    });
     write('cases/already-fine/input/Tile.tsx', FIXED);
     expect(errors()).toEqual([]);
+  });
+
+  it('rejects a category outside the plan', () => {
+    writeCase('image-alt', { category: 'images' });
+    expect(errors()).toEqual(['image-alt: unknown category "images"']);
+  });
+
+  it.each([
+    ['no-change', 'fix'],
+    ['needs-human', 'fix'],
+    ['text-alternatives', 'no_change_needed'],
+    ['text-alternatives', 'unsure'],
+    ['needs-human', 'no_change_needed'],
+  ])('rejects category %s on a case expecting %s', (category, expectedOutcome) => {
+    const isFix = expectedOutcome === 'fix';
+    if (!isFix) rmSync(join(root, 'cases/image-alt/expected'), { recursive: true });
+    writeCase('image-alt', {
+      category,
+      expectedOutcome,
+      allowedLines: isFix ? [{ start: 4, end: 4 }] : undefined,
+    });
+    expect(errors()).toEqual([
+      `image-alt: category "${category}" does not fit expectedOutcome "${expectedOutcome}"`,
+    ]);
   });
 
   it('rejects a case.json that does not match EvalCase', () => {
@@ -130,7 +158,11 @@ describe('validateDataset', () => {
   });
 
   it('rejects expected/ on a case that is not a fix', () => {
-    writeCase('image-alt', { expectedOutcome: 'unsure', allowedLines: undefined });
+    writeCase('image-alt', {
+      category: 'needs-human',
+      expectedOutcome: 'unsure',
+      allowedLines: undefined,
+    });
     expect(errors()).toEqual([expect.stringContaining('expected/ is only allowed')]);
   });
 
@@ -181,10 +213,37 @@ describe('validateDataset', () => {
 });
 
 describe('the real dataset', () => {
+  const real = resolve(import.meta.dirname, '../../dataset');
+
   it('is valid', () => {
-    const real = resolve(import.meta.dirname, '../../dataset');
     const report = validateDataset(real);
     expect(report.errors).toEqual([]);
     expect(report.cases).toHaveLength(report.manifest!.cases.length);
+  });
+
+  describe('against the plan (#14)', () => {
+    const { manifest, cases } = validateDataset(real);
+
+    it('meets every category target, with 50 or more cases', () => {
+      expect(cases.length).toBeGreaterThanOrEqual(50);
+      const counts = new Map(countBy(cases, 'category'));
+      for (const [category, target] of Object.entries(CATEGORY_TARGETS)) {
+        expect(counts.get(category) ?? 0, category).toBeGreaterThanOrEqual(target);
+      }
+    });
+
+    it('tags about 15 cases smoke, in every category', () => {
+      const smoke = cases.filter((c) => c.case.tags.includes('smoke'));
+      expect(smoke.length).toBeGreaterThanOrEqual(13);
+      expect(smoke.length).toBeLessThanOrEqual(17);
+      expect(new Set(smoke.map((c) => c.case.category))).toEqual(
+        new Set(Object.keys(CATEGORY_TARGETS)),
+      );
+    });
+
+    it('has a changelog entry for the current dataset version', () => {
+      const changelog = readFileSync(join(real, 'CHANGELOG.md'), 'utf8');
+      expect(changelog).toContain(`## v${manifest!.datasetVersion}\n`);
+    });
   });
 });

@@ -1,0 +1,30 @@
+{
+  "id": "frame-focusable-content-delivery-map",
+  "version": 1,
+  "framework": "react",
+  "description": "An iframe with links inside it has tabIndex -1, which keeps keyboard users out of those links.",
+  "category": "keyboard",
+  "tags": [],
+  "filePath": "DeliveryMap.tsx",
+  "issue": {
+    "ruleId": "frame-focusable-content",
+    "impact": "serious",
+    "help": "Frames with focusable content must not have tabindex=-1",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/frame-focusable-content?application=playwright",
+    "wcag": [
+      "2.1.1"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "iframe |> html",
+    "html": "<html lang=\"en\"><head><title>Delivery areas</title></head><body><a href=\"#north\">North</a></body></html>",
+    "failureSummary": "Fix any of the following:\n  Element has focusable descendants",
+    "fingerprint": "frame-focusable-content:iframe |> html"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 5,
+      "end": 5
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "link-name-logo-empty-alt",
+  "version": 1,
+  "framework": "react",
+  "description": "A home link holds only a logo with an empty alt, so the link has no name. The site name is in the file.",
+  "category": "names",
+  "tags": [],
+  "filePath": "SiteLogo.tsx",
+  "issue": {
+    "ruleId": "link-name",
+    "impact": "serious",
+    "help": "Links must have discernible text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/link-name?application=playwright",
+    "wcag": [
+      "2.4.4",
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "a",
+    "html": "<a href=\"/\"><img alt=\"\" width=\"120\" height=\"32\" src=\"/logo.svg\"></a>",
+    "failureSummary": "Fix all of the following:\n  Element is in tab order and does not have accessible text\n\nFix any of the following:\n  Element does not have text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute",
+    "fingerprint": "link-name:a"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 6,
+      "end": 8
+    }
+  ]
+}

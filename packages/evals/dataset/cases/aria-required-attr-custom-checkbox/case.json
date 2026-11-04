@@ -1,10 +1,12 @@
 {
   "id": "aria-required-attr-custom-checkbox",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "A div with role=\"checkbox\" has no aria-checked. A native checkbox is the better fix.",
   "category": "aria",
-  "tags": [],
+  "tags": [
+    "smoke"
+  ],
   "filePath": "GiftWrapOption.tsx",
   "issue": {
     "ruleId": "aria-required-attr",

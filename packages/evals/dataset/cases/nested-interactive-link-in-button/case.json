@@ -1,0 +1,32 @@
+{
+  "id": "nested-interactive-link-in-button",
+  "version": 1,
+  "framework": "react",
+  "description": "A link is nested inside a button, so the two controls collide for keyboard and screen reader users.",
+  "category": "keyboard",
+  "tags": [
+    "smoke"
+  ],
+  "filePath": "AddToBasket.tsx",
+  "issue": {
+    "ruleId": "nested-interactive",
+    "impact": "serious",
+    "help": "Interactive controls must not be nested",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/nested-interactive?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "button",
+    "html": "<button type=\"button\" class=\"primary\">Add to basket<a href=\"/help/delivery\">Delivery info</a></button>",
+    "failureSummary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+    "fingerprint": "nested-interactive:button"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 4,
+      "end": 7
+    }
+  ]
+}

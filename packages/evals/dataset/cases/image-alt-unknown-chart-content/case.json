@@ -1,0 +1,24 @@
+{
+  "id": "image-alt-unknown-chart-content",
+  "version": 1,
+  "framework": "react",
+  "description": "A sales chart has no alt, and its caption gives only a figure number. Only someone who can see the chart can say what it shows.",
+  "category": "needs-human",
+  "tags": [],
+  "filePath": "SalesFigure.tsx",
+  "issue": {
+    "ruleId": "image-alt",
+    "impact": "critical",
+    "help": "Images must have alternative text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/image-alt?application=playwright",
+    "wcag": [
+      "1.1.1"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "img",
+    "html": "<img width=\"480\" height=\"240\" src=\"/reports/2026-q3-chart.png\">",
+    "failureSummary": "Fix any of the following:\n  Element does not have an alt attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"",
+    "fingerprint": "image-alt:img"
+  },
+  "expectedOutcome": "unsure"
+}

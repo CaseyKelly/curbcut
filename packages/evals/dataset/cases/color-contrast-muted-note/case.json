@@ -1,10 +1,12 @@
 {
   "id": "color-contrast-muted-note",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "Light grey small text on white fails 4.5:1 contrast.",
   "category": "contrast",
-  "tags": [],
+  "tags": [
+    "smoke"
+  ],
   "filePath": "ShippingNote.tsx",
   "issue": {
     "ruleId": "color-contrast",

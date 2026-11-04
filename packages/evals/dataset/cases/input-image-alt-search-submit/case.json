@@ -1,0 +1,31 @@
+{
+  "id": "input-image-alt-search-submit",
+  "version": 1,
+  "framework": "react",
+  "description": "An image submit button in a search form has no alt text.",
+  "category": "text-alternatives",
+  "tags": [],
+  "filePath": "SiteSearch.tsx",
+  "issue": {
+    "ruleId": "input-image-alt",
+    "impact": "critical",
+    "help": "Image buttons must have alternative text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/input-image-alt?application=playwright",
+    "wcag": [
+      "1.1.1",
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "input[src$=\"magnifier.svg\"]",
+    "html": "<input src=\"/icons/magnifier.svg\" width=\"20\" height=\"20\" type=\"image\">",
+    "failureSummary": "Fix any of the following:\n  Element has no alt attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>",
+    "fingerprint": "input-image-alt:input[src$=\"magnifier.svg\"]"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 6,
+      "end": 6
+    }
+  ]
+}

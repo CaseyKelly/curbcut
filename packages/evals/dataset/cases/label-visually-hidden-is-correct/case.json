@@ -1,10 +1,12 @@
 {
   "id": "label-visually-hidden-is-correct",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "Stale report: the search input already has a visually hidden label. A visible label isn't required.",
-  "category": "forms",
-  "tags": [],
+  "category": "no-change",
+  "tags": [
+    "smoke"
+  ],
   "filePath": "SiteSearch.tsx",
   "issue": {
     "ruleId": "label",

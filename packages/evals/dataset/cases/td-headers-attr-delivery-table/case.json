@@ -1,0 +1,30 @@
+{
+  "id": "td-headers-attr-delivery-table",
+  "version": 1,
+  "framework": "react",
+  "description": "A table cell points its headers attribute at a column id that does not exist.",
+  "category": "structure",
+  "tags": [],
+  "filePath": "DeliveryTable.tsx",
+  "issue": {
+    "ruleId": "td-headers-attr",
+    "impact": "serious",
+    "help": "Table cell headers attributes must refer to other <th> elements in the same table",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/td-headers-attr?application=playwright",
+    "wcag": [
+      "1.3.1"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "table",
+    "html": "<table>",
+    "failureSummary": "Fix all of the following:\n  The headers attribute is not exclusively used to refer to other header cells in the table",
+    "fingerprint": "td-headers-attr:table"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 14,
+      "end": 14
+    }
+  ]
+}

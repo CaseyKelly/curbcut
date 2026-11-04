@@ -1,10 +1,12 @@
 {
   "id": "aria-hidden-focus-sale-ribbon",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "A sale ribbon is aria-hidden but contains a focusable link.",
   "category": "aria",
-  "tags": [],
+  "tags": [
+    "smoke"
+  ],
   "filePath": "SaleRibbon.tsx",
   "issue": {
     "ruleId": "aria-hidden-focus",

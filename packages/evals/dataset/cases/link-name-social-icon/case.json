@@ -1,10 +1,12 @@
 {
   "id": "link-name-social-icon",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "An Instagram link contains only a hidden SVG icon, so it has no accessible name.",
   "category": "names",
-  "tags": [],
+  "tags": [
+    "smoke"
+  ],
   "filePath": "SocialLinks.tsx",
   "issue": {
     "ruleId": "link-name",

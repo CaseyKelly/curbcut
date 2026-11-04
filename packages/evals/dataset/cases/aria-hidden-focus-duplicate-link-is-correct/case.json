@@ -1,0 +1,24 @@
+{
+  "id": "aria-hidden-focus-duplicate-link-is-correct",
+  "version": 1,
+  "framework": "react",
+  "description": "Stale report: a duplicate image link is hidden from screen readers and already out of the tab order. The titled link beside it is the one users reach.",
+  "category": "no-change",
+  "tags": [],
+  "filePath": "PlantCard.tsx",
+  "issue": {
+    "ruleId": "aria-hidden-focus",
+    "impact": "serious",
+    "help": "ARIA hidden element must not be focusable or contain focusable elements",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-hidden-focus?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "a[aria-hidden=\"true\"]",
+    "html": "<a href=\"/plants/pilea\" aria-hidden=\"true\"><img alt=\"\" src=\"/pilea.jpg\"></a>",
+    "failureSummary": "Fix all of the following:\n  Focusable content should have tabindex=\"-1\", be removed from the DOM, or not be hidden with aria-hidden",
+    "fingerprint": "aria-hidden-focus:a[aria-hidden=\"true\"]"
+  },
+  "expectedOutcome": "no_change_needed"
+}

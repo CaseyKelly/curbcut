@@ -1,0 +1,30 @@
+{
+  "id": "input-button-name-empty-submit",
+  "version": 1,
+  "framework": "react",
+  "description": "A newsletter form submit input has an empty value, so it has no name.",
+  "category": "form-labels",
+  "tags": [],
+  "filePath": "NewsletterForm.tsx",
+  "issue": {
+    "ruleId": "input-button-name",
+    "impact": "critical",
+    "help": "Input buttons must have discernible text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/input-button-name?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": ".arrow-button",
+    "html": "<input class=\"arrow-button\" type=\"submit\" value=\"\">",
+    "failureSummary": "Fix any of the following:\n  Element has a value attribute and the value attribute is empty\n  Element has an empty value attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"",
+    "fingerprint": "input-button-name:.arrow-button"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 7,
+      "end": 7
+    }
+  ]
+}

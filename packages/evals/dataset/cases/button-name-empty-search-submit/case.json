@@ -1,0 +1,30 @@
+{
+  "id": "button-name-empty-search-submit",
+  "version": 1,
+  "framework": "react",
+  "description": "A search submit button is empty, with its icon drawn by CSS, so it has no name.",
+  "category": "names",
+  "tags": [],
+  "filePath": "HeaderSearch.tsx",
+  "issue": {
+    "ruleId": "button-name",
+    "impact": "critical",
+    "help": "Buttons must have discernible text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/button-name?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "button",
+    "html": "<button type=\"submit\" class=\"magnifier-icon\"></button>",
+    "failureSummary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"",
+    "fingerprint": "button-name:button"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 6,
+      "end": 6
+    }
+  ]
+}

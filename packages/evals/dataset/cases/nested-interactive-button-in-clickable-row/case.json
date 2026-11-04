@@ -1,0 +1,30 @@
+{
+  "id": "nested-interactive-button-in-clickable-row",
+  "version": 1,
+  "framework": "react",
+  "description": "A focusable div with role=\"button\" wraps a real button, so one control sits inside another.",
+  "category": "keyboard",
+  "tags": [],
+  "filePath": "BasketRow.tsx",
+  "issue": {
+    "ruleId": "nested-interactive",
+    "impact": "serious",
+    "help": "Interactive controls must not be nested",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/nested-interactive?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "div[role=\"button\"]",
+    "html": "<div role=\"button\" tabindex=\"0\">Fiddle-leaf fig<button type=\"button\">Remove</button></div>",
+    "failureSummary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+    "fingerprint": "nested-interactive:div[role=\"button\"]"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 9,
+      "end": 21
+    }
+  ]
+}

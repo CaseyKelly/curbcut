@@ -1,9 +1,9 @@
 {
   "id": "image-alt-decorative-divider",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "A decorative divider image has no alt attribute. It should be hidden with alt=\"\", not described.",
-  "category": "images",
+  "category": "text-alternatives",
   "tags": [],
   "filePath": "CareGuide.tsx",
   "issue": {

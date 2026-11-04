@@ -1,0 +1,30 @@
+{
+  "id": "aria-roles-invented-status-role",
+  "version": 1,
+  "framework": "react",
+  "description": "A live save message uses a role that does not exist.",
+  "category": "aria",
+  "tags": [],
+  "filePath": "SaveStatus.tsx",
+  "issue": {
+    "ruleId": "aria-roles",
+    "impact": "critical",
+    "help": "ARIA roles used must conform to valid values",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/aria-roles?application=playwright",
+    "wcag": [
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "div[role=\"statusbar\"]",
+    "html": "<div role=\"statusbar\">All changes saved</div>",
+    "failureSummary": "Fix all of the following:\n  Role must be one of the valid ARIA roles: statusbar",
+    "fingerprint": "aria-roles:div[role=\"statusbar\"]"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 5,
+      "end": 5
+    }
+  ]
+}

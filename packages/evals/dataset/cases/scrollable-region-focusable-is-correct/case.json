@@ -1,0 +1,25 @@
+{
+  "id": "scrollable-region-focusable-is-correct",
+  "version": 1,
+  "framework": "react",
+  "description": "Stale report: the scrolling list now holds links, so keyboard users can already scroll it by tabbing. It needs no tabIndex.",
+  "category": "no-change",
+  "tags": [],
+  "filePath": "CareGuides.tsx",
+  "issue": {
+    "ruleId": "scrollable-region-focusable",
+    "impact": "serious",
+    "help": "Scrollable region must have keyboard access",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/scrollable-region-focusable?application=playwright",
+    "wcag": [
+      "2.1.1",
+      "2.1.3"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "#root > div",
+    "html": "<div style=\"height: 60px; width: 240px; overflow: auto;\"><p>Watering ferns</p><p>Repotting orchids</p><p>Pruning figs</p><p>Feeding cacti</p></div>",
+    "failureSummary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable",
+    "fingerprint": "scrollable-region-focusable:#root > div"
+  },
+  "expectedOutcome": "no_change_needed"
+}

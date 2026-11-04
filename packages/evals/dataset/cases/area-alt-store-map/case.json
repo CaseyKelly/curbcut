@@ -1,0 +1,31 @@
+{
+  "id": "area-alt-store-map",
+  "version": 1,
+  "framework": "react",
+  "description": "A clickable area in an image map has no alt text, though its link says where it goes.",
+  "category": "text-alternatives",
+  "tags": [],
+  "filePath": "StoreMap.tsx",
+  "issue": {
+    "ruleId": "area-alt",
+    "impact": "critical",
+    "help": "Active <area> elements must have alternative text",
+    "helpUrl": "https://dequeuniversity.com/rules/axe/4.14/area-alt?application=playwright",
+    "wcag": [
+      "2.4.4",
+      "4.1.2"
+    ],
+    "pageUrl": "http://localhost/",
+    "selector": "area[coords=\"200,0,400,300\"]",
+    "html": "<area shape=\"rect\" coords=\"200,0,400,300\" href=\"/departments/garden-tools\">",
+    "failureSummary": "Fix any of the following:\n  Element has no alt attribute\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute",
+    "fingerprint": "area-alt:area[coords=\"200,0,400,300\"]"
+  },
+  "expectedOutcome": "fix",
+  "allowedLines": [
+    {
+      "start": 7,
+      "end": 7
+    }
+  ]
+}

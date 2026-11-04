@@ -1,10 +1,12 @@
 {
   "id": "list-div-children",
-  "version": 1,
+  "version": 2,
   "framework": "react",
   "description": "An ordered list renders div children instead of li.",
   "category": "structure",
-  "tags": [],
+  "tags": [
+    "smoke"
+  ],
   "filePath": "WateringSteps.tsx",
   "issue": {
     "ruleId": "list",
