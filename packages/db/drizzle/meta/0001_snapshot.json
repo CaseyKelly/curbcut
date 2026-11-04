@@ -1,5 +1,5 @@
 {
-  "id": "62a2667d-1012-450b-a11f-2a4e8c179a84",
+  "id": "143814fc-2228-41ff-b9b7-ef50b182d7aa",
   "prevId": "148482ce-8af7-42f6-9780-fac1777b1606",
   "version": "7",
   "dialect": "postgresql",
@@ -727,6 +727,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "explain_status": {
+          "name": "explain_status",
+          "type": "explain_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "explain_error": {
+          "name": "explain_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "axe_version": {
           "name": "axe_version",
           "type": "text",
@@ -875,6 +888,16 @@
         "tool_call",
         "tool_result",
         "end"
+      ]
+    },
+    "public.explain_status": {
+      "name": "explain_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "running",
+        "completed",
+        "failed"
       ]
     },
     "public.impact": {

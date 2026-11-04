@@ -5,6 +5,7 @@
 // both so forgetting fails CI.
 import { createHash } from 'node:crypto';
 import { MODELS } from '../llm/pricing';
+import { redactHtml } from './redact';
 
 export const EXPLAIN_PROMPT_VERSION = 'explain-v1';
 export const EXPLAIN_MODEL = MODELS.haiku;
@@ -49,25 +50,10 @@ export interface ExplainableIssue {
   failureSummary?: string | null;
 }
 
-const INPUT_TAG = /<input\b(?:[^>"']|"[^"]*"|'[^']*'|"[^"]*$|'[^']*$)*(?:>|$)/gi;
-const VALUE_ATTR = /\bvalue\s*=\s*(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s>]*)/gi;
-const SECRET_TYPE = /\btype\s*=\s*["']?\s*(?:password|hidden)\b/i;
-
-/**
- * Blanks the `value` of password and hidden inputs, where tokens and
- * passwords end up. It's a stopgap for M1; the secret scanner that redacts
- * repo files before they reach a prompt covers the rest in M3.
- */
-export function redactInputValues(html: string): string {
-  return html.replace(INPUT_TAG, (tag) =>
-    SECRET_TYPE.test(tag) ? tag.replace(VALUE_ATTR, 'value=""') : tag,
-  );
-}
-
-/** Redacts, then caps the length. The regexes only ever see a bounded string. */
+/** Redacts, then caps the length. Redaction only ever sees a bounded string. */
 function clean(text: string): string {
   const bounded = text.length > 20_000 ? text.slice(0, 20_000) : text;
-  const redacted = redactInputValues(bounded);
+  const redacted = redactHtml(bounded);
   return redacted.length > MAX_FIELD_CHARS ? `${redacted.slice(0, MAX_FIELD_CHARS)}…` : redacted;
 }
 

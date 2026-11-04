@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
+import { IssueExplanation } from '@curbcut/core';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   EXPLAIN_MODEL,
   EXPLAIN_PROMPT_VERSION,
@@ -7,7 +9,6 @@ import {
   explainCacheKey,
   explainInput,
   explainMessage,
-  redactInputValues,
   type ExplainableIssue,
 } from './explain';
 
@@ -20,14 +21,19 @@ const issue = (overrides: Partial<ExplainableIssue> = {}): ExplainableIssue => (
 });
 
 describe('prompt version', () => {
-  // If this fails you changed the prompt text or the message layout. Bump
+  // If this fails you changed the prompt text, the message layout, or
+  // `IssueExplanation` (cached rows must still parse as it). Bump
   // EXPLAIN_PROMPT_VERSION, then replace the pinned hash with the new one.
   const PINNED: Record<string, string> = {
-    'explain-v1': '4105a6018536fe16bd3d2f64912f943c93f7ab84d0ec69c1b52e6351b89636ab',
+    'explain-v1': 'db230e161c74cd1ea26bcdadd2f04db9753195f4cce8f595ebcd07609cf528d7',
   };
 
   it('is bumped whenever the prompt changes', () => {
-    const text = [EXPLAIN_SYSTEM, explainMessage(explainInput([issue()]))].join('\n----\n');
+    const text = [
+      EXPLAIN_SYSTEM,
+      explainMessage(explainInput([issue()])),
+      JSON.stringify(z.toJSONSchema(IssueExplanation)),
+    ].join('\n----\n');
     const hash = createHash('sha256').update(text).digest('hex');
     expect(PINNED[EXPLAIN_PROMPT_VERSION]).toBe(hash);
   });
@@ -74,33 +80,8 @@ describe('explainInput', () => {
   });
 });
 
-describe('redactInputValues', () => {
-  it.each([
-    ['<input type="password" value="hunter2">'],
-    ['<input value="hunter2" type="password">'],
-    ["<input type='hidden' name='csrf' value='hunter2'>"],
-    ['<input type=hidden value=hunter2>'],
-    ['<input TYPE="Password" VALUE="hunter2" />'],
-    ['<input type="hidden" value="a>hunter2">'],
-    // axe cuts long HTML off, so the tag may never close.
-    ['<input type="password" value="hunter2'],
-  ])('blanks the value in %s', (html) => {
-    const out = redactInputValues(html);
-    expect(out).not.toContain('hunter2');
-    expect(out).toContain('value=""');
-  });
-
-  it('leaves other inputs and other attributes alone', () => {
-    const html = '<input type="text" value="Casey"><input type="password" name="pw">';
-    expect(redactInputValues(html)).toBe(html);
-  });
-
-  it('only touches input tags', () => {
-    const html = '<button type="hidden" value="x">Go</button>';
-    expect(redactInputValues(html)).toBe(html);
-  });
-
-  it('applies to samples, including the failure summary', () => {
+describe('redaction in samples', () => {
+  it('applies to the HTML and the failure summary', () => {
     const { samples } = explainInput([
       issue({
         html: '<input type="password" value="s3cret-pass">',
@@ -108,6 +89,12 @@ describe('redactInputValues', () => {
       }),
     ]);
     expect(JSON.stringify(samples)).not.toContain('s3cret');
+  });
+
+  it('blanks a value whose type is cut off by the length cap', () => {
+    const html = `<input value="hunter2-planted" data-x="${'x'.repeat(25_000)}" type="password">`;
+    const [sample] = explainInput([issue({ html })]).samples;
+    expect(sample!.html).not.toContain('hunter2-planted');
   });
 });
 

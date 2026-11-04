@@ -20,9 +20,8 @@ const MAX_TOKENS = 1_024;
 export interface ExplainResult {
   /** The `explanations` row, to link the group's issues to. */
   explanationId: string;
+  /** True only if no call was made. A call that lost a race to store its answer still cost money. */
   cached: boolean;
-  /** Dollars charged for this group: 0 on a cache hit. */
-  costUsd: number;
 }
 
 async function findCached(db: Db, cacheKey: string) {
@@ -38,7 +37,8 @@ async function findCached(db: Db, cacheKey: string) {
 /**
  * Explains the issues of one rule: returns the cached explanation if there is
  * one, otherwise asks the model once and caches the answer. The cache key is
- * rule + HTML hash + prompt version + model.
+ * rule + a hash of the prompt input (the elements' HTML and failure
+ * summaries, the rule's summary and criteria) + prompt version + model.
  */
 export async function explainGroup(
   { db, provider }: { db: Db; provider: LLMProvider },
@@ -49,7 +49,7 @@ export async function explainGroup(
   const cacheKey = explainCacheKey(input);
 
   const hit = await findCached(db, cacheKey);
-  if (hit) return { explanationId: hit.id, cached: true, costUsd: 0 };
+  if (hit) return { explanationId: hit.id, cached: true };
 
   const result = await provider.generateObject(
     {
@@ -78,9 +78,10 @@ export async function explainGroup(
     // Two groups with identical input can race; the first row wins.
     .onConflictDoNothing({ target: explanations.cacheKey })
     .returning({ id: explanations.id });
-  if (inserted) return { explanationId: inserted.id, cached: false, costUsd: result.costUsd };
+  if (inserted) return { explanationId: inserted.id, cached: false };
 
   const winner = await findCached(db, cacheKey);
   if (!winner) throw new Error(`Explanation ${cacheKey} vanished after a conflicting insert`);
-  return { explanationId: winner.id, cached: true, costUsd: result.costUsd };
+  // The call was made and charged to the run, so this isn't a cache hit.
+  return { explanationId: winner.id, cached: false };
 }

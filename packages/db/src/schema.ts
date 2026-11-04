@@ -61,6 +61,13 @@ export const runEndReason = pgEnum('run_end_reason', values(RunEndReason.options
 export const jobType = pgEnum('job_type', ['scan', 'explain', 'fix', 'rescan']);
 export const jobStatus = pgEnum('job_status', ['queued', 'running', 'succeeded', 'failed']);
 export const scanStatus = pgEnum('scan_status', ['queued', 'running', 'completed', 'failed']);
+/** Where a completed scan's explanations stand (#7). Its own enum: a scan can be done while explaining isn't. */
+export const explainStatus = pgEnum('explain_status', [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+]);
 /**
  * A run waiting for a human is `awaiting_approval`, not ended, so it can resume
  * (#27). Only `ended` runs have an `end_reason`.
@@ -135,6 +142,18 @@ export const scans = pgTable(
     }),
     status: scanStatus('status').notNull().default('queued'),
     error: text('error'),
+    /**
+     * The explain job's progress (#7): null if the scan found nothing to
+     * explain. `pending` also covers a job being retried, with the last error
+     * in `explainError`. `failed` means no more attempts, so the UI should say
+     * so rather than wait.
+     */
+    explainStatus: explainStatus('explain_status'),
+    /**
+     * Why explaining failed, or what a `completed` run left out (groups the
+     * model couldn't answer, whose issues have no explanation).
+     */
+    explainError: text('explain_error'),
     axeVersion: text('axe_version'),
     /** Totals across the scan's runs (#31). */
     ...tokens,
@@ -205,7 +224,11 @@ export const explanations = pgTable(
   'explanations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** Hash of rule + HTML hash + prompt version + model. */
+    /**
+     * Hash of rule + a hash of the prompt input (the elements' HTML and
+     * failure summaries, the rule's summary and criteria) + prompt version +
+     * model.
+     */
     cacheKey: text('cache_key').notNull().unique(),
     ruleId: text('rule_id').notNull(),
     /** An `IssueExplanation`. */

@@ -16,7 +16,7 @@ import { ExplainJobPayload, groupIssues } from '@curbcut/core';
 import { agentRuns, issues, scans, type Db } from '@curbcut/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { PermanentError } from '../errors';
-import type { Job } from '../queue';
+import type { Job, Tx } from '../queue';
 import type { JobHandler } from './types';
 
 export interface ExplainJobOptions {
@@ -40,31 +40,63 @@ const isGroupFailure = (err: unknown) =>
   err instanceof RefusalError;
 
 /**
- * Runs `fn` over `items`, `limit` at a time. The first error stops new work
- * from starting, lets what's in flight finish (it's already paid for), then
- * is thrown.
+ * Runs `fn` over every item, `limit` at a time, and returns the errors rather
+ * than stopping at the first: one group's failure shouldn't leave the rest
+ * unexplained, least of all groups the cache can serve for free. Only an
+ * abort stops it early.
  */
 async function forEachLimited<T>(
   items: readonly T[],
   limit: number,
   signal: AbortSignal,
   fn: (item: T) => Promise<void>,
-): Promise<void> {
+): Promise<unknown[]> {
   let next = 0;
-  let failure: { error: unknown } | undefined;
+  const errors: unknown[] = [];
   const lane = async () => {
-    while (!failure && !signal.aborted && next < items.length) {
+    while (!signal.aborted && next < items.length) {
       const item = items[next++]!;
       try {
         await fn(item);
       } catch (error) {
-        failure ??= { error };
+        errors.push(error);
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
-  if (failure) throw failure.error;
-  signal.throwIfAborted();
+  return errors;
+}
+
+/** Longest note stored on a scan. */
+const MAX_NOTE_LENGTH = 500;
+
+/**
+ * Called in the queue's transaction when an attempt ends without success (#7).
+ */
+async function markAttemptEnded(tx: Tx, job: Job) {
+  const payload = ExplainJobPayload.safeParse(job.payload);
+  if (!payload.success) return;
+  // Requeued: back to `pending` with the last error, so the UI can say why
+  // it's retrying. Out of attempts: `failed`, so it stops waiting.
+  await tx
+    .update(scans)
+    .set({
+      explainStatus: job.status === 'failed' ? 'failed' : 'pending',
+      explainError: job.error,
+    })
+    .where(eq(scans.id, payload.data.scanId));
+  // Either way this attempt's run is over. Its spend stays on the row, so
+  // the budget still counts it.
+  await tx
+    .update(agentRuns)
+    .set({ status: 'ended', endReason: 'error', endedAt: sql`now()` })
+    .where(
+      and(
+        eq(agentRuns.scanId, payload.data.scanId),
+        eq(agentRuns.kind, 'pipeline'),
+        eq(agentRuns.status, 'running'),
+      ),
+    );
 }
 
 export function explainJob(
@@ -82,6 +114,10 @@ export function explainJob(
 
       let runId = '';
       await write(async (tx) => {
+        await tx
+          .update(scans)
+          .set({ explainStatus: 'running', explainError: null })
+          .where(eq(scans.id, scanId));
         const [run] = await tx
           .insert(agentRuns)
           .values({
@@ -96,7 +132,7 @@ export function explainJob(
 
       let cachedGroups = 0;
       const skipped: string[] = [];
-      await forEachLimited(groups, concurrency, signal, async (group) => {
+      const errors = await forEachLimited(groups, concurrency, signal, async (group) => {
         try {
           const result = await explainGroup({ db, provider }, group.issues, { runId, signal });
           if (result.cached) cachedGroups++;
@@ -109,40 +145,62 @@ export function explainJob(
               .where(and(eq(issues.scanId, scanId), eq(issues.groupKey, group.groupKey)));
           });
         } catch (err) {
-          // Spending more can't work this month; retrying the job won't help.
-          if (err instanceof BudgetExceededError) throw new PermanentError(err.message);
+          // Collected by the pool and decided on once every group has run.
           if (!isGroupFailure(err)) throw err;
           skipped.push(group.groupKey);
           log(`explain: skipped ${group.groupKey} for scan ${scanId}: ${String(err)}`);
         }
       });
+      signal.throwIfAborted();
+      // Every group has had its turn by now. A spent budget can't be fixed by
+      // retrying this month; anything else (a dropped connection) can.
+      const budget = errors.find((e) => e instanceof BudgetExceededError);
+      if (budget) throw new PermanentError(budget.message);
+      if (errors.length > 0) throw errors[0];
+
       log(
         `explain: scan ${scanId}: ${groups.length} groups, ${cachedGroups} from cache, ${skipped.length} skipped`,
       );
 
+      // Skipped groups aren't retried: the model would likely fail the same way,
+      // and each try costs money. If nothing at all was explained, say so.
+      const nothingExplained = groups.length > 0 && skipped.length === groups.length;
+      const note =
+        skipped.length > 0
+          ? `${skipped.length} of ${groups.length} groups couldn't be explained: ${skipped.sort().join(', ')}`.slice(
+              0,
+              MAX_NOTE_LENGTH,
+            )
+          : null;
       return async (tx) => {
         await tx
           .update(agentRuns)
-          .set({ status: 'ended', endReason: 'completed', endedAt: sql`now()` })
+          .set({
+            status: 'ended',
+            endReason: nothingExplained ? 'error' : 'completed',
+            endedAt: sql`now()`,
+          })
           .where(eq(agentRuns.id, runId));
+        await tx
+          .update(scans)
+          .set({ explainStatus: nothingExplained ? 'failed' : 'completed', explainError: note })
+          .where(eq(scans.id, scanId));
       };
     },
 
-    async onAttemptEnded(tx, job) {
-      const payload = ExplainJobPayload.safeParse(job.payload);
-      if (!payload.success) return;
-      // Whether it's requeued or out of attempts, this attempt's run is over.
-      // Its spend stays on the row, so the budget still counts it.
-      await tx
-        .update(agentRuns)
-        .set({ status: 'ended', endReason: 'error', endedAt: sql`now()` })
-        .where(
-          and(
-            eq(agentRuns.scanId, payload.data.scanId),
-            eq(agentRuns.kind, 'pipeline'),
-            eq(agentRuns.status, 'running'),
-          ),
-        );
+    onAttemptEnded: markAttemptEnded,
+  };
+}
+
+/**
+ * Stands in for `explainJob` when the LLM isn't configured, so a local worker
+ * still scans. Each explain job fails at once, and the scan says why.
+ */
+export function explainUnavailableJob(reason: string): JobHandler {
+  return {
+    run() {
+      return Promise.reject(new PermanentError(reason));
     },
+    onAttemptEnded: markAttemptEnded,
   };
 }

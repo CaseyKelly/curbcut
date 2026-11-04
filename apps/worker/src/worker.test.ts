@@ -265,13 +265,14 @@ describe.skipIf(!process.env.DATABASE_URL)('worker', () => {
       const queued = await explainJobsFor(scanId);
       expect(queued).toHaveLength(1);
       expect(queued[0]).toMatchObject({ status: 'queued', payload: { scanId } });
+      expect(await scanOf(scanId)).toMatchObject({ explainStatus: 'pending', explainError: null });
     });
 
     it('queues no explain job for a scan with no issues', async () => {
       const { scanId, jobId } = await newScanJob();
       const worker = workerWith(() => Promise.resolve({ issues: [], axeVersion: '4.11.0' }));
       expect(await runOnce(worker, jobId)).toMatchObject({ status: 'succeeded' });
-      expect(await scanOf(scanId)).toMatchObject({ status: 'completed' });
+      expect(await scanOf(scanId)).toMatchObject({ status: 'completed', explainStatus: null });
       expect(await explainJobsFor(scanId)).toHaveLength(0);
     });
 

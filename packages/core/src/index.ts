@@ -81,7 +81,11 @@ export type ScanJobPayload = z.infer<typeof ScanJobPayload>;
 export const ExplainJobPayload = z.strictObject({ scanId: z.uuid() });
 export type ExplainJobPayload = z.infer<typeof ExplainJobPayload>;
 
-/** One rule's issues, with the highest impact among them (#7). */
+/**
+ * One rule's issues, with the highest impact among them (#7). A plain generic
+ * interface, not a Zod schema: it's derived by `groupIssues`, never parsed or
+ * stored, and wraps whatever rows the caller has.
+ */
 export interface IssueGroup<T> {
   groupKey: string;
   ruleId: string;

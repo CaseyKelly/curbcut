@@ -3,7 +3,7 @@ import { hostname } from 'node:os';
 import { createDbLedger, createProvider } from '@curbcut/agent';
 import { createDb } from '@curbcut/db';
 import { startHealthServer } from './health';
-import { explainJob } from './jobs/explain';
+import { explainJob, explainUnavailableJob } from './jobs/explain';
 import { scanJob } from './jobs/scan';
 import { createQueue } from './queue';
 import { Scanner } from './scanner/scanner';
@@ -18,12 +18,28 @@ if (allowPrivate && process.env.NODE_ENV === 'production') {
 
 const db = createDb();
 const scanner = new Scanner(allowPrivate ? { isBlockedAddress: () => false } : {});
-// Fails at startup, not on the first explain job, if the LLM settings are wrong.
-const provider = createProvider({ ledger: createDbLedger(db) });
+
+/**
+ * Production fails at startup if the LLM settings are wrong, so a deploy that
+ * forgot the API key never goes live. Elsewhere the worker still scans, and
+ * explain jobs fail with the reason, which the scan shows. A fresh `.env`
+ * has no LLM settings, and scanning doesn't need them.
+ */
+function explainHandler() {
+  try {
+    return explainJob(db, createProvider({ ledger: createDbLedger(db) }));
+  } catch (err) {
+    if (process.env.NODE_ENV === 'production') throw err;
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`explanations are off: ${reason}`);
+    return explainUnavailableJob(reason);
+  }
+}
+
 const worker = createWorker({
   // On Fly the hostname is the machine id.
   queue: createQueue(db, { workerId: `${hostname()}:${process.pid}` }),
-  handlers: { scan: scanJob(db, scanner), explain: explainJob(db, provider) },
+  handlers: { scan: scanJob(db, scanner), explain: explainHandler() },
 });
 const health = await startHealthServer(Number(process.env.PORT ?? 8080), worker.healthy);
 

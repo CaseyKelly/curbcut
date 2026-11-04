@@ -60,7 +60,13 @@ export function scanJob(db: Db, scanner: Pick<Scanner, 'scan'>): JobHandler {
         }
         await tx
           .update(scans)
-          .set({ status: 'completed', axeVersion, finishedAt: sql`now()` })
+          .set({
+            status: 'completed',
+            axeVersion,
+            finishedAt: sql`now()`,
+            explainStatus: found.length > 0 ? 'pending' : null,
+            explainError: null,
+          })
           .where(eq(scans.id, scanId));
         // In the same transaction, so a completed scan with issues always has
         // its explain job, and a scan that was retried never has two.

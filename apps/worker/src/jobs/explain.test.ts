@@ -7,14 +7,20 @@
 // shared and keyed on the rule.
 import { randomUUID } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
-import { createDbLedger, createProvider, MODELS, type SendMessage } from '@curbcut/agent';
+import {
+  createDbLedger,
+  createProvider,
+  explainGroup,
+  MODELS,
+  type SendMessage,
+} from '@curbcut/agent';
 import type { Impact } from '@curbcut/core';
 import { agentRuns, createDb, explanations, issues, scans, type Db } from '@curbcut/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PermanentError } from '../errors';
 import type { Job } from '../queue';
-import { explainJob } from './explain';
+import { explainJob, explainUnavailableJob } from './explain';
 
 const explanationJson = JSON.stringify({
   whatsWrong: 'The image has no text alternative.',
@@ -72,6 +78,7 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
       .values({
         targets: ['https://example.com/'],
         status: 'completed',
+        explainStatus: 'pending',
         createdByGithubId: 1,
         createdByLogin: 'test',
       })
@@ -97,7 +104,11 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     return scan!.id;
   }
 
-  const jobFor = (scanId: string) => ({ id: randomUUID(), payload: { scanId } }) as Job;
+  const jobFor = (scanId: string, extra: Partial<Job> = {}) =>
+    ({ id: randomUUID(), payload: { scanId }, ...extra }) as Job;
+
+  const scanOf = async (scanId: string) =>
+    (await db.select().from(scans).where(eq(scans.id, scanId)))[0]!;
 
   /** Provider over a stubbed API, with the real database ledger. */
   function setup(
@@ -171,6 +182,7 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
       endReason: 'completed',
     });
     expect(agentRun!.costUsd).toBeCloseTo(2 * CALL_COST, 6);
+    expect(await scanOf(scanId)).toMatchObject({ explainStatus: 'completed', explainError: null });
   });
 
   it('serves a repeat from the cache: no call, no cost', async () => {
@@ -255,6 +267,21 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     expect(agentRun).toMatchObject({ status: 'ended', endReason: 'completed' });
     // The failed group's two attempts are still charged.
     expect(agentRun!.costUsd).toBeCloseTo(3 * CALL_COST, 6);
+    const scan = await scanOf(scanId);
+    expect(scan).toMatchObject({ explainStatus: 'completed' });
+    expect(scan.explainError).toContain(`1 of 2 groups couldn't be explained: ${bad}`);
+  });
+
+  it('marks the scan failed when no group could be explained', async () => {
+    const scanId = await newScan([
+      { ruleId: newRule(), count: 1 },
+      { ruleId: newRule(), count: 1 },
+    ]);
+    const { handler } = setup(() => Promise.resolve(reply('not json')));
+    await run(handler, scanId);
+    expect((await issuesOf(scanId)).every((r) => r.explanationId === null)).toBe(true);
+    expect(await scanOf(scanId)).toMatchObject({ explainStatus: 'failed' });
+    expect((await runsOf(scanId))[0]).toMatchObject({ status: 'ended', endReason: 'error' });
   });
 
   it('fails permanently once the monthly budget is spent', async () => {
@@ -265,15 +292,113 @@ describe.skipIf(!process.env.DATABASE_URL)('explain job', () => {
     expect((await issuesOf(scanId))[0]!.explanationId).toBeNull();
   });
 
+  it('still links the groups the cache can serve when the budget is spent', async () => {
+    const [big, small] = [newRule('big'), newRule('small')];
+    const html = '<img src="cached.png">';
+    // `small` is explained already; `big` sorts first and has to ask.
+    await run(setup(answers).handler, await newScan([{ ruleId: small, count: 1, html }]));
+    const scanId = await newScan([
+      { ruleId: big, count: 2, html },
+      { ruleId: small, count: 1, html },
+    ]);
+
+    const { sent, handler } = setup(answers, { monthlyBudgetUsd: 0, concurrency: 1 });
+    await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+    expect(sent).not.toHaveBeenCalled();
+    const rows = await issuesOf(scanId);
+    expect(rows.find((r) => r.ruleId === big)!.explanationId).toBeNull();
+    expect(rows.find((r) => r.ruleId === small)!.explanationId).not.toBeNull();
+  });
+
+  it('still explains the other groups after one fails with a transient error', async () => {
+    const [a, b] = [newRule('a'), newRule('b')];
+    const scanId = await newScan([
+      { ruleId: a, count: 2 },
+      { ruleId: b, count: 1 },
+    ]);
+    const { handler } = setup(
+      (params) =>
+        JSON.stringify(params.messages).includes(a)
+          ? Promise.reject(new Error('socket hang up'))
+          : Promise.resolve(reply(explanationJson)),
+      { concurrency: 1 },
+    );
+    await expect(run(handler, scanId)).rejects.toThrow('socket hang up');
+    const rows = await issuesOf(scanId);
+    expect(rows.find((r) => r.ruleId === a)!.explanationId).toBeNull();
+    expect(rows.find((r) => r.ruleId === b)!.explanationId).not.toBeNull();
+  });
+
   it('lets a transient error through for the queue to retry, and ends the attempt’s run', async () => {
     const scanId = await newScan([{ ruleId: newRule(), count: 1 }]);
     const { handler } = setup(() => Promise.reject(new Error('socket hang up')));
     await expect(run(handler, scanId)).rejects.toThrow('socket hang up');
     expect((await runsOf(scanId))[0]).toMatchObject({ status: 'running' });
 
-    // What the queue does when it requeues or fails the job.
-    await db.transaction((tx) => handler.onAttemptEnded!(tx, jobFor(scanId)));
+    // What the queue does when it requeues the job: the scan waits, with the reason.
+    const requeued = jobFor(scanId, { status: 'queued', error: 'socket hang up' });
+    await db.transaction((tx) => handler.onAttemptEnded!(tx, requeued));
     expect((await runsOf(scanId))[0]).toMatchObject({ status: 'ended', endReason: 'error' });
+    expect(await scanOf(scanId)).toMatchObject({
+      explainStatus: 'pending',
+      explainError: 'socket hang up',
+    });
+
+    // And when it's out of attempts: the scan stops waiting.
+    const failed = jobFor(scanId, { status: 'failed', error: 'socket hang up' });
+    await db.transaction((tx) => handler.onAttemptEnded!(tx, failed));
+    expect(await scanOf(scanId)).toMatchObject({
+      explainStatus: 'failed',
+      explainError: 'socket hang up',
+    });
+  });
+
+  it('does not count a call that lost the race to store its answer as a cache hit', async () => {
+    const ruleId = newRule();
+    const issue = { ruleId, help: 'h', wcag: ['1.1.1'], html: '<img src="race2.png">' };
+    // Both calls miss the cache, and neither answers until both have asked.
+    let asked = 0;
+    let release!: () => void;
+    const bothAsked = new Promise<void>((resolve) => (release = resolve));
+    const { sent } = setup(async () => {
+      if (++asked === 2) release();
+      await bothAsked;
+      return reply(explanationJson);
+    });
+    const provider = createProvider({
+      ledger: createDbLedger(db),
+      mode: 'live',
+      monthlyBudgetUsd: 1e9,
+      send: sent,
+    });
+    const scanId = await newScan([{ ruleId, count: 1 }]);
+    const [run] = await db
+      .insert(agentRuns)
+      .values({ scanId, kind: 'pipeline', model: MODELS.haiku, promptVersion: 'explain-v1' })
+      .returning();
+    const ctx = { runId: run!.id };
+    const [x, y] = await Promise.all([
+      explainGroup({ db, provider }, [issue], ctx),
+      explainGroup({ db, provider }, [issue], ctx),
+    ]);
+    expect(sent).toHaveBeenCalledTimes(2);
+    expect([x.cached, y.cached]).toEqual([false, false]);
+    expect(x.explanationId).toBe(y.explanationId);
+  });
+
+  it('stands in when the LLM is not configured: fails at once, and the scan says why', async () => {
+    const scanId = await newScan([{ ruleId: newRule(), count: 1 }]);
+    const handler = explainUnavailableJob('LLM_MODE=replay needs a recordings directory');
+    await expect(run(handler, scanId)).rejects.toBeInstanceOf(PermanentError);
+    const failed = jobFor(scanId, {
+      status: 'failed',
+      error: 'LLM_MODE=replay needs a recordings directory',
+    });
+    await db.transaction((tx) => handler.onAttemptEnded!(tx, failed));
+    expect(await scanOf(scanId)).toMatchObject({
+      explainStatus: 'failed',
+      explainError: 'LLM_MODE=replay needs a recordings directory',
+    });
   });
 
   it('on a retry, reuses what the failed attempt already explained', async () => {

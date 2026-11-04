@@ -116,7 +116,7 @@ Requires Node 22.18 or later (`nvm install` reads `.nvmrc` and installs the newe
 
 ```bash
 npm install
-cp .env.example .env    # then fill in DATABASE_URL and the rest
+cp .env.example .env    # then fill in DATABASE_URL and the rest (explanations need the LLM settings too)
 docker compose up -d    # local Postgres (or point DATABASE_URL at a Neon dev branch)
 npm run db:migrate      # apply migrations in packages/db/drizzle
 npm run dev             # web app at http://localhost:3000
