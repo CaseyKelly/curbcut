@@ -7,9 +7,10 @@ npm run evals:validate                 # check every case and the manifest
 npm run evals -- --reference           # check the runner: the reference answers should all pass
 npm run evals -- --rescore <report>    # re-score a saved run, for free
 npm run evals -- --case <id> --case …  # only these cases
+npm run evals -- --judge                # also score fixes with the LLM judge (#15)
 ```
 
-The runner scores each case with (a) resolved, (b) build safe, (c) scoped, and (e) cost and latency, prints a summary table, and writes a JSON report to `packages/evals/reports/` (or `--out`). Scoring (a) needs Chromium: `npx playwright install chromium`. The live fixer, which calls `proposeFix`, arrives with #9.
+The runner scores each case with (a) resolved, (b) build safe, (c) scoped, and (e) cost and latency, and with `--judge` (d) the LLM judge, calibrated in [`../calibration`](../calibration/README.md). It prints a summary table and writes a JSON report to `packages/evals/reports/` (or `--out`). Scoring (a) needs Chromium: `npx playwright install chromium`. The live fixer, which calls `proposeFix`, arrives with #9.
 
 ## Layout
 

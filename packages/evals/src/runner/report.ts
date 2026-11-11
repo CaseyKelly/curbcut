@@ -3,6 +3,9 @@
 import { EvalResult, PatchOutcome, PatchProposal } from '@curbcut/core';
 import { z } from 'zod';
 
+/** A fix case needs at least this judge score to pass (plan, "Eval design"). */
+export const JUDGE_PASS_SCORE = 3;
+
 export const RunMode = z.enum(['live', 'reference', 'rescore']);
 export type RunMode = z.infer<typeof RunMode>;
 
@@ -15,6 +18,11 @@ export const CaseRecord = z.strictObject({
   proposal: PatchProposal.optional(),
   /** Why a scorer failed, or what a crashed case threw. */
   notes: z.array(z.string()),
+  /**
+   * What the judge's calls spent (#15): eval cost, not the fixer's, so it's
+   * kept out of `result.costUsd`. Absent when nothing was spent.
+   */
+  judgeCostUsd: z.number().nonnegative().optional(),
 });
 export type CaseRecord = z.infer<typeof CaseRecord>;
 
@@ -30,7 +38,10 @@ export const RunTotals = z.strictObject({
   buildBreaks: z.int().nonnegative(),
   /** Cases where the fixer crashed or its proposal could not be read. */
   errors: z.int().nonnegative(),
+  /** The fixer's cost, scorer (e). */
   costUsd: z.number().nonnegative(),
+  /** What the judge spent. Optional so reports from before #15 still parse. */
+  judgeCostUsd: z.number().nonnegative().optional(),
   latencyMs: z.strictObject({
     p50: z.int().nonnegative(),
     p95: z.int().nonnegative(),
@@ -46,6 +57,8 @@ export const RunReport = z.strictObject({
   model: z.string().min(1),
   promptVersion: z.string().min(1),
   axeVersion: z.string().optional(),
+  /** Whether the judge (d) was asked for, which changes what a fix case needs to pass. */
+  judged: z.boolean().optional(),
   totals: RunTotals,
   cases: z.array(CaseRecord),
 });
@@ -53,20 +66,28 @@ export type RunReport = z.infer<typeof RunReport>;
 
 /**
  * Whether a case passes (plan, "Eval design"). A fix case needs (a), (b) and
- * (c); the judge (d) joins in #15. A no-change case passes with any outcome
+ * (c), and when the run is `judged`, a judge score of at least 3 (#15); a fix
+ * the judge couldn't score fails. A no-change case passes with any outcome
  * but a fix: answering `unsure` is a safe miss, not a wrong edit. An unsure
  * case passes only by asking.
  */
-export function passed(expected: PatchOutcome, r: EvalResult): boolean {
+export function passed(
+  expected: PatchOutcome,
+  r: EvalResult,
+  { judged = false }: { judged?: boolean } = {},
+): boolean {
   if (r.outcome === 'error') return false;
   switch (expected) {
-    case 'fix':
+    case 'fix': {
+      const judge = r.scores.judge;
       return (
         r.outcome === 'fix' &&
         r.scores.resolved === true &&
         r.scores.buildSafe === true &&
-        r.scores.scoped === true
+        r.scores.scoped === true &&
+        (judged ? judge !== undefined && judge.score >= JUDGE_PASS_SCORE : true)
       );
+    }
     case 'no_change_needed':
       return r.outcome !== 'fix';
     case 'unsure':
@@ -104,6 +125,7 @@ export function totals(records: CaseRecord[]): RunTotals {
     ).length,
     errors: records.filter((r) => r.result.outcome === 'error').length,
     costUsd: records.reduce((sum, r) => sum + r.result.costUsd, 0),
+    judgeCostUsd: records.reduce((sum, r) => sum + (r.judgeCostUsd ?? 0), 0),
     latencyMs: {
       p50: percentile(latencies, 50),
       p95: percentile(latencies, 95),
@@ -128,19 +150,32 @@ export function summaryLines(report: RunReport): string[] {
       mark(s?.resolved),
       mark(s?.buildSafe),
       mark(s?.scoped),
+      s?.judge ? `${s.judge.score}/5` : '-',
       usd(r.result.costUsd),
       `${r.result.latencyMs}ms`,
       r.pass ? 'PASS' : 'FAIL',
     ];
   });
-  const header = ['case', 'expected', 'outcome', '(a)', '(b)', '(c)', 'cost', 'latency', 'result'];
+  const header = [
+    'case',
+    'expected',
+    'outcome',
+    '(a)',
+    '(b)',
+    '(c)',
+    '(d)',
+    'cost',
+    'latency',
+    'result',
+  ];
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i]!.length)));
   const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i]!)).join('  ');
 
   const t = report.totals;
   const out = [
     `Eval run (${report.mode}): dataset v${report.datasetVersion}, model ${report.model}, prompt ${report.promptVersion}` +
-      (report.axeVersion ? `, axe ${report.axeVersion}` : ''),
+      (report.axeVersion ? `, axe ${report.axeVersion}` : '') +
+      (report.judged ? ', judged' : ''),
     '',
     line(header),
     line(widths.map((w) => '-'.repeat(w))),
@@ -150,7 +185,8 @@ export function summaryLines(report: RunReport): string[] {
     ...Object.entries(t.byExpected).map(([k, v]) => `  ${k.padEnd(18)} ${pct(v)}`),
     `Build breaks ${t.buildBreaks}`,
     `Errors       ${t.errors}`,
-    `Cost         ${usd(t.costUsd)} total`,
+    `Cost         ${usd(t.costUsd)} total` +
+      (t.judgeCostUsd ? `, plus ${usd(t.judgeCostUsd)} for the judge` : ''),
     `Latency      p50 ${t.latencyMs.p50}ms, p95 ${t.latencyMs.p95}ms, max ${t.latencyMs.max}ms`,
   ];
   const failures = report.cases.filter((r) => !r.pass && r.notes.length > 0);

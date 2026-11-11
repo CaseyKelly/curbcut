@@ -16,6 +16,7 @@
     "scan:sample-site": "npm run scan:sample-site -w @curbcut/evals",
     "evals:validate": "npm run evals:validate -w @curbcut/evals",
     "evals": "npm run evals -w @curbcut/evals --",
+    "evals:calibrate": "npm run evals:calibrate -w @curbcut/evals --",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "format": "prettier --write .",
