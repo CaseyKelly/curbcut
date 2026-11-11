@@ -1,14 +1,21 @@
-// Drizzle schema for the M1 tables. After changing it, run `npm run db:generate`
+// Drizzle schema for the M1 tables and the M2 eval tables. After changing it, run `npm run db:generate`
 // and commit the new migration in `drizzle/`; CI fails if they drift apart.
 // Follows the data model in the project plan. Enums that also exist in
 // `@curbcut/core` take their values from there, so the database and the Zod
 // schemas can't disagree. Flexible payloads (job input, agent steps,
 // explanation bodies) are jsonb, validated by the core schemas on the way in
 // and out.
-import { AgentStep, Impact, RunEndReason, type IssueExplanation } from '@curbcut/core';
+import {
+  AgentStep,
+  Impact,
+  PatchOutcome,
+  RunEndReason,
+  type IssueExplanation,
+} from '@curbcut/core';
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   index,
   integer,
@@ -300,5 +307,109 @@ export const agentSteps = pgTable(
   (t) => [
     uniqueIndex('agent_steps_run_seq_idx').on(t.runId, t.seq),
     nonNegative('agent_steps_totals_check', t.seq, t.inputTokens, t.outputTokens, t.costUsd),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Eval runs (#16)
+
+/**
+ * What started an eval run, matching the eval tiers in the plan: PRs run the
+ * replay or smoke tier, and the full tier runs weekly or on a manual dispatch
+ * (which also covers the run before a release).
+ */
+export const evalTrigger = pgEnum('eval_trigger', ['pr', 'weekly', 'manual']);
+/** A case's outcome: what the fixer proposed, or `error` if it crashed first. */
+export const evalOutcome = pgEnum(
+  'eval_outcome',
+  values<PatchOutcome | 'error'>([...PatchOutcome.options, 'error']),
+);
+export const patchOutcome = pgEnum('patch_outcome', values(PatchOutcome.options));
+
+/**
+ * One live eval run, saved from the runner's JSON report. Reference
+ * self-checks aren't saved, so they can't become a baseline.
+ */
+export const evalRuns = pgTable(
+  'eval_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    gitSha: text('git_sha').notNull(),
+    branch: text('branch').notNull(),
+    trigger: evalTrigger('trigger').notNull(),
+    /** Results from different dataset versions aren't compared. */
+    datasetVersion: integer('dataset_version').notNull(),
+    model: text('model').notNull(),
+    /** The fixer's prompt version; prompts pin their text to it by hash in tests. */
+    promptVersion: text('prompt_version').notNull(),
+    axeVersion: text('axe_version'),
+    /** The report's `RunTotals`, parsed with that schema when read. */
+    totals: jsonb('totals').notNull(),
+    /** Also in `totals`; a column so the monthly budget can sum it (#6). */
+    costUsd,
+    /** When the run started (the report's `createdAt`), so the latest run is the newest code. */
+    createdAt,
+  },
+  (t) => [
+    // The baseline lookup: the latest run on a branch for a dataset version.
+    index('eval_runs_baseline_idx').on(t.branch, t.datasetVersion, t.createdAt),
+    index('eval_runs_created_at_idx').on(t.createdAt),
+    nonNegative('eval_runs_totals_check', t.costUsd),
+  ],
+);
+
+/**
+ * One row per case in a run: an `EvalResult` plus what the report keeps
+ * alongside it, so a stored run can be compared like a report.
+ */
+export const evalResults = pgTable(
+  'eval_results',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => evalRuns.id, { onDelete: 'cascade' }),
+    caseId: text('case_id').notNull(),
+    caseVersion: integer('case_version').notNull(),
+    category: text('category').notNull(),
+    expectedOutcome: patchOutcome('expected_outcome').notNull(),
+    outcome: evalOutcome('outcome').notNull(),
+    /** Null when the case errored. */
+    outcomeCorrect: boolean('outcome_correct'),
+    /** Scorers (a) to (c), and repo-mode mapping; null when a scorer didn't run. */
+    resolved: boolean('resolved'),
+    buildOk: boolean('build_ok'),
+    scopeOk: boolean('scope_ok'),
+    mappingCorrect: boolean('mapping_correct'),
+    /** Scorer (d), with the judge's own versions (#15). All null or all set. */
+    judgeScore: integer('judge_score'),
+    judgeReason: text('judge_reason'),
+    judgeModel: text('judge_model'),
+    judgePromptVersion: text('judge_prompt_version'),
+    /** What a crashed case threw. */
+    error: text('error'),
+    /** A `PatchProposal`, so a stored run can be inspected and rescored. */
+    proposal: jsonb('proposal'),
+    /** Why a scorer failed. */
+    notes: text('notes')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    /** Scorer (e). */
+    costUsd,
+    latencyMs: integer('latency_ms').notNull(),
+    pass: boolean('pass').notNull(),
+  },
+  (t) => [
+    uniqueIndex('eval_results_run_case_idx').on(t.runId, t.caseId),
+    nonNegative('eval_results_totals_check', t.costUsd, t.latencyMs, t.caseVersion),
+    check(
+      'eval_results_error_check',
+      sql`(${t.outcome} = 'error') = (${t.error} IS NOT NULL) AND (${t.outcome} = 'error') = (${t.outcomeCorrect} IS NULL)`,
+    ),
+    check(
+      'eval_results_judge_check',
+      sql`(${t.judgeScore} IS NULL) = (${t.judgeReason} IS NULL) AND (${t.judgeScore} IS NULL) = (${t.judgeModel} IS NULL) AND (${t.judgeScore} IS NULL) = (${t.judgePromptVersion} IS NULL) AND ${t.judgeScore} BETWEEN 1 AND 5`,
+    ),
   ],
 );
