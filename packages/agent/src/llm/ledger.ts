@@ -1,5 +1,5 @@
 // Where the provider records spend and reads it back for the budget guard (#6).
-import { agentRuns, scans, type Db } from '@curbcut/db';
+import { agentRuns, evalRuns, scans, type Db } from '@curbcut/db';
 import { eq, gte, sql } from 'drizzle-orm';
 
 /** One LLM call's tokens and cost, charged to a run. */
@@ -24,17 +24,26 @@ export function startOfMonthUtc(now = new Date()): Date {
 }
 
 /**
- * LLM spend since the start of the UTC month: `agent_runs.cost_usd`, with
- * each run counted in the month it started. Every database ledger uses this,
- * so the budget sees all spend; eval runs (#14) join the sum when `eval_runs`
- * exists.
+ * LLM spend since the start of the UTC month: `agent_runs.cost_usd` plus
+ * `eval_runs.cost_usd` (#16), each run counted in the month it started. Every
+ * database ledger uses this, so the budget sees all spend. An eval run is
+ * saved once it finishes, so the guard doesn't see one still in progress.
  */
 export async function monthToDateSpendUsd(db: Db): Promise<number> {
-  const [row] = await db
-    .select({ total: sql<string>`coalesce(sum(${agentRuns.costUsd}), 0)` })
-    .from(agentRuns)
-    .where(gte(agentRuns.createdAt, startOfMonthUtc()));
-  return Number(row?.total ?? 0);
+  const since = startOfMonthUtc();
+  const sum = (column: typeof agentRuns.costUsd | typeof evalRuns.costUsd) =>
+    sql<string>`coalesce(sum(${column}), 0)`;
+  const [[agent], [evals]] = await Promise.all([
+    db
+      .select({ total: sum(agentRuns.costUsd) })
+      .from(agentRuns)
+      .where(gte(agentRuns.createdAt, since)),
+    db
+      .select({ total: sum(evalRuns.costUsd) })
+      .from(evalRuns)
+      .where(gte(evalRuns.createdAt, since)),
+  ]);
+  return Number(agent?.total ?? 0) + Number(evals?.total ?? 0);
 }
 
 /** Charges each call to its `agent_runs` row and the run's scan. */
