@@ -10,10 +10,13 @@
     "typecheck": "tsc -p . && tsc -p dataset",
     "scan:sample-site": "node src/sample-site/scan.ts",
     "evals:validate": "node src/dataset/validate.ts",
-    "evals": "node src/runner/run.ts"
+    "evals": "tsx --env-file-if-exists=../../.env src/runner/run.ts",
+    "evals:calibrate": "tsx --env-file-if-exists=../../.env src/calibration/calibrate.ts"
   },
   "dependencies": {
+    "@curbcut/agent": "^0.0.0",
     "@curbcut/core": "^0.0.0",
+    "@curbcut/db": "^0.0.0",
     "diff": "^9.0.0",
     "zod": "^4.6.7"
   },
@@ -27,6 +30,7 @@
     "playwright": "^1.64.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
     "vite": "^8.3.5"
   }
 }

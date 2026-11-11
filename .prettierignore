@@ -4,6 +4,7 @@ dist
 coverage
 package-lock.json
 packages/evals/dataset
+packages/evals/calibration/items
 fixtures/sample-site/src
 fixtures/sample-site/index.html
 packages/db/drizzle

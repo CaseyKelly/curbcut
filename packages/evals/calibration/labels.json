@@ -1,0 +1,109 @@
+{
+  "items": [
+    {
+      "id": "image-alt-product-photo--reference",
+      "caseId": "image-alt-product-photo",
+      "caseVersion": 2,
+      "source": "reference",
+      "label": null
+    },
+    {
+      "id": "image-alt-product-photo--generic-alt",
+      "caseId": "image-alt-product-photo",
+      "caseVersion": 2,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "button-name-icon-dismiss--reference",
+      "caseId": "button-name-icon-dismiss",
+      "caseVersion": 2,
+      "source": "reference",
+      "label": null
+    },
+    {
+      "id": "button-name-icon-dismiss--redundant-aria",
+      "caseId": "button-name-icon-dismiss",
+      "caseVersion": 2,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "label-missing-email--reference",
+      "caseId": "label-missing-email",
+      "caseVersion": 2,
+      "source": "reference",
+      "label": null
+    },
+    {
+      "id": "label-missing-email--aria-label-only",
+      "caseId": "label-missing-email",
+      "caseVersion": 2,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "aria-command-name-div-icon-button--reference",
+      "caseId": "aria-command-name-div-icon-button",
+      "caseVersion": 1,
+      "source": "reference",
+      "label": null
+    },
+    {
+      "id": "aria-command-name-div-icon-button--aria-div",
+      "caseId": "aria-command-name-div-icon-button",
+      "caseVersion": 1,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "link-name-social-icon--meaningless-name",
+      "caseId": "link-name-social-icon",
+      "caseVersion": 2,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "list-div-children--drop-list",
+      "caseId": "list-div-children",
+      "caseVersion": 2,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "color-contrast-light-button--dark-text",
+      "caseId": "color-contrast-light-button",
+      "caseVersion": 1,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "nested-interactive-link-in-button--delete-link",
+      "caseId": "nested-interactive-link-in-button",
+      "caseVersion": 1,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "svg-img-alt-brand-logo--svg-title",
+      "caseId": "svg-img-alt-brand-logo",
+      "caseVersion": 2,
+      "source": "variant",
+      "label": null
+    },
+    {
+      "id": "select-name-sort--reference",
+      "caseId": "select-name-sort",
+      "caseVersion": 2,
+      "source": "reference",
+      "label": null
+    },
+    {
+      "id": "aria-required-attr-div-switch--aria-checked-only",
+      "caseId": "aria-required-attr-div-switch",
+      "caseVersion": 1,
+      "source": "variant",
+      "label": null
+    }
+  ]
+}
