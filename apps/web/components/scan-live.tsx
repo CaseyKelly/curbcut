@@ -12,15 +12,9 @@ import {
   type Connection,
 } from '@/lib/scan-messages';
 import { isFinal, parseDoneReason, parseScanEvent, type ScanView } from '@/lib/scan-view';
+import { trackConnection } from '@/lib/scan-connection';
 import { plural } from '@/lib/ui';
 import { IssueGroup } from './issue-group';
-
-/**
- * How long the stream may be down before the page says so. The server ends a
- * stream every few minutes on purpose and the browser reconnects after 3 s, so
- * a shorter wait would announce a problem that isn't one.
- */
-const RECONNECT_NOTICE_MS = 6_000;
 
 /**
  * The scan page's live part (#8): shows the scan, and while it's still going
@@ -36,12 +30,8 @@ export function ScanLive({ initial }: { initial: ScanView }) {
   useEffect(() => {
     if (isFinal(initial)) return;
     const events = new EventSource(`/api/scans/${initial.id}/events`);
-    let noticeTimer: ReturnType<typeof setTimeout> | undefined;
-    const live = () => {
-      clearTimeout(noticeTimer);
-      setConnection('live');
-    };
-    events.addEventListener('open', live);
+    const tracker = trackConnection(setConnection);
+    events.addEventListener('open', () => tracker.live());
     events.addEventListener('scan', (event: MessageEvent<string>) => {
       const next = parseScanEvent(event.data);
       if (next === null) {
@@ -49,27 +39,22 @@ export function ScanLive({ initial }: { initial: ScanView }) {
         return;
       }
       setView(next);
-      live();
+      tracker.live();
     });
     events.addEventListener('done', (event: MessageEvent<string>) => {
       // The server closes after `done`, and EventSource would reconnect if we didn't.
       events.close();
-      clearTimeout(noticeTimer);
+      tracker.stop();
       if (parseDoneReason(event.data) === 'gone') setGone(true);
     });
     events.addEventListener('error', () => {
-      clearTimeout(noticeTimer);
       // CLOSED means the browser gave up (a 401 after the session ended, or a
       // 404 for a scan deleted in the meantime); reloading shows which.
       // Otherwise it's retrying by itself.
-      if (events.readyState === EventSource.CLOSED) {
-        setConnection('lost');
-        return;
-      }
-      noticeTimer = setTimeout(() => setConnection('reconnecting'), RECONNECT_NOTICE_MS);
+      tracker.error(events.readyState === EventSource.CLOSED);
     });
     return () => {
-      clearTimeout(noticeTimer);
+      tracker.stop();
       events.close();
     };
   }, [initial]);
