@@ -8,9 +8,10 @@ import { BlockList, isIP } from 'node:net';
 // Anything that isn't routable on the public internet: loopback, private,
 // link-local (including cloud metadata at 169.254.169.254), carrier-grade NAT,
 // documentation and benchmark ranges, multicast, and reserved space. IPv6
-// prefixes that embed an IPv4 address (NAT64, 6to4, Teredo) are blocked whole,
-// since the embedded address could be private. IPv4-mapped IPv6 addresses
-// (`::ffff:a.b.c.d`) are checked against the IPv4 rules by BlockList itself.
+// prefixes that embed an IPv4 address (IPv4-compatible, IPv4-translated, NAT64,
+// 6to4, Teredo) are blocked whole, since the embedded address could be
+// private. IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) are checked against
+// the IPv4 rules by BlockList itself.
 const blocked = new BlockList();
 for (const [prefix, bits] of [
   ['0.0.0.0', 8],
@@ -43,6 +44,9 @@ for (const [prefix, bits] of [
   ['2001::', 32],
   ['2001:db8::', 32],
   ['2002::', 16],
+  // Documentation (RFC 9637) and SRv6 segment IDs (RFC 9602): never public hosts.
+  ['3fff::', 20],
+  ['5f00::', 16],
   ['fc00::', 7],
   ['fe80::', 10],
   ['fec0::', 10],
@@ -51,9 +55,29 @@ for (const [prefix, bits] of [
   blocked.addSubnet(prefix, bits, 'ipv6');
 }
 
+/**
+ * IPv4-translated addresses (`::ffff:0:a.b.c.d`, SIIT). Like `::/96`, whether
+ * one reaches an IPv4 host depends on the network, so the range is blocked
+ * whole. It's matched here rather than in `blocked` because Node's BlockList
+ * gets it wrong both ways: as a subnet it matches every IPv4 address and none
+ * of the range, and as a range it also matches IPv4-mapped public addresses.
+ * The URL parser gives the canonical form, which for this range is always
+ * `::ffff:0:` and two groups. An address it can't parse counts as translated.
+ */
+function isIPv4Translated(address: string): boolean {
+  try {
+    return /^\[::ffff:0:[0-9a-f]{1,4}:[0-9a-f]{1,4}\]$/.test(
+      new URL(`http://[${address}]/`).hostname,
+    );
+  } catch {
+    return true;
+  }
+}
+
 /** True for any address that isn't public. Anything that isn't an IP address counts as private. */
 export function isPrivateAddress(address: string): boolean {
   const family = isIP(address);
   if (family === 0) return true;
+  if (family === 6 && isIPv4Translated(address)) return true;
   return blocked.check(address, family === 4 ? 'ipv4' : 'ipv6');
 }

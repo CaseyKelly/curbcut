@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { redirectTarget } from '@/lib/testing';
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn<() => Promise<unknown>>(),
@@ -19,6 +20,7 @@ const form = (url: string) => {
   return data;
 };
 const previous = { url: '', error: null };
+
 const signedIn = (login: string, githubId = 1) =>
   mocks.auth.mockResolvedValue({ user: { login, githubId } });
 
@@ -32,24 +34,24 @@ describe('startScan', () => {
 
   it('writes nothing for a signed-out caller', async () => {
     mocks.auth.mockResolvedValue(null);
-    await expect(startScan(previous, form('https://example.com/'))).rejects.toThrow(
-      'NEXT_REDIRECT',
+    await expect(redirectTarget(startScan(previous, form('https://example.com/')))).resolves.toBe(
+      '/sign-in',
     );
     expect(mocks.createScan).not.toHaveBeenCalled();
   });
 
   it('writes nothing for a signed-in account that is not allowlisted', async () => {
     signedIn('stranger');
-    await expect(startScan(previous, form('https://example.com/'))).rejects.toThrow(
-      'NEXT_REDIRECT',
+    await expect(redirectTarget(startScan(previous, form('https://example.com/')))).resolves.toBe(
+      '/not-authorized',
     );
     expect(mocks.createScan).not.toHaveBeenCalled();
   });
 
   it('writes nothing for a session from before the GitHub id was stored', async () => {
     mocks.auth.mockResolvedValue({ user: { login: 'CaseyKelly' } });
-    await expect(startScan(previous, form('https://example.com/'))).rejects.toThrow(
-      'NEXT_REDIRECT',
+    await expect(redirectTarget(startScan(previous, form('https://example.com/')))).resolves.toBe(
+      '/sign-in',
     );
     expect(mocks.createScan).not.toHaveBeenCalled();
   });
@@ -71,8 +73,8 @@ describe('startScan', () => {
 
   it('queues the scan as the signed-in user, then goes to its page', async () => {
     signedIn('CaseyKelly', 9472412);
-    await expect(startScan(previous, form(' https://example.com '))).rejects.toThrow(
-      'NEXT_REDIRECT',
+    await expect(redirectTarget(startScan(previous, form(' https://example.com ')))).resolves.toBe(
+      '/scans/scan-1',
     );
     expect(mocks.createScan).toHaveBeenCalledWith({}, 'https://example.com/', {
       login: 'CaseyKelly',

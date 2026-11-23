@@ -10,13 +10,24 @@ export const SIGN_IN_PATH = '/sign-in';
 export const NOT_AUTHORIZED_PATH = '/not-authorized';
 
 /**
- * The sign-in page, carrying where to land afterwards. Auth.js only follows a
- * same-origin `callbackUrl`, and the sign-in page passes it straight on, so
- * `returnTo` must be one of our own paths: anything else gets no callback.
+ * `value` if it's a path on this site, else null. Used on the sign-in page's
+ * `callbackUrl`, which anyone can set, as well as on paths built in code. A
+ * second `/` or `\` would make it another host (`//evil.example`), and URL
+ * parsers drop tabs and newlines, so `/\t/evil.example` would become one:
+ * control characters are refused anywhere in it. Auth.js also checks the
+ * origin; this doesn't rely on that.
  */
+export function safeReturnTo(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  // eslint-disable-next-line no-control-regex
+  if (!/^\/(?![/\\])/.test(value) || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  return value;
+}
+
+/** The sign-in page, carrying where to land afterwards if that's a path of ours. */
 export function signInPath(returnTo?: string): string {
-  if (!returnTo || !/^\/(?![/\\])/.test(returnTo)) return SIGN_IN_PATH;
-  return `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(returnTo)}`;
+  const path = safeReturnTo(returnTo);
+  return path ? `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(path)}` : SIGN_IN_PATH;
 }
 
 /**

@@ -19,8 +19,6 @@ export interface GuardOptions {
   resolve?: (hostname: string) => Promise<ResolvedAddress[]>;
 }
 
-export { isPrivateAddress };
-
 async function systemResolve(hostname: string): Promise<ResolvedAddress[]> {
   const answers = await lookup(hostname, { all: true, verbatim: true });
   return answers.map((a) => ({ address: a.address, family: a.family === 6 ? 6 : 4 }));

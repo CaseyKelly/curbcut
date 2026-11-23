@@ -31,6 +31,14 @@ describe('validateScanUrl', () => {
     expect(error('http://?x')).toMatch(/doesn’t look like a web address/i);
   });
 
+  it.each(['http://./', 'http://../', 'https://.../', 'http://.:8080/'])(
+    'rejects %s, a name made only of dots, even with private targets allowed',
+    (input) => {
+      expect(error(input)).toMatch(/doesn’t look like a web address/i);
+      expect(validateScanUrl(input, { allowPrivate: true }).ok).toBe(false);
+    },
+  );
+
   it.each(['javascript:alert(1)', 'data:text/html,hi', 'file:///etc/passwd', 'ftp://example.com'])(
     'rejects %s',
     (input) => {

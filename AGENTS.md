@@ -41,12 +41,16 @@ Run `npm run check` before calling work done.
 | ---------------------- | ---------------------------------------- | ------- |
 | `apps/web`             | Next.js app: UI, route handlers, auth    | Casey   |
 | `apps/worker`          | Job runner: scans and agent runs         | Casey   |
-| `packages/core`        | Zod schemas: the shared contract         | Both    |
+| `packages/core`        | Zod schemas: the shared contract¹        | Both    |
 | `packages/agent`       | LLM provider, prompts, agent loop, tools | Casey   |
 | `packages/db`          | Drizzle schema and migrations            | Casey   |
 | `packages/evals`       | Eval dataset, runner, scorers            | Upasana |
 | `fixtures/sample-site` | React app with deliberate a11y bugs      | Upasana |
 | `e2e`                  | Playwright end-to-end tests              | Upasana |
+
+¹ Plus `@curbcut/core/net`, the private-address blocklist the worker and the scan form share. It
+needs `node:net`, so it's a separate subpath: never import it from client code, and keep runtime
+helpers like it out of the package index, which browser code imports.
 
 Workspace packages export TypeScript source directly. Next.js compiles them via
 `transpilePackages`; the worker runs with `tsx`.
