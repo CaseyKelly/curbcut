@@ -13,7 +13,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!isScanId(id)) return Response.json({ error: 'Scan not found' }, { status: 404 });
 
   const db = getDb();
-  if ((await loadScanSignature(db, id)) === null) {
+  // A database error here must not become a 500: EventSource never retries a
+  // non-200 answer, so live updates would stop for good. Open the stream
+  // instead; its own polling handles the error, and the browser reconnects.
+  const signature = await loadScanSignature(db, id).catch(() => undefined);
+  if (signature === null) {
     return Response.json({ error: 'Scan not found' }, { status: 404 });
   }
 

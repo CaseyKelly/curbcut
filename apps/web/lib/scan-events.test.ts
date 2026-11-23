@@ -190,8 +190,8 @@ describe('scanEventStream', () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(scanViews(out.text).map((v) => v.stage)).toEqual(['queued']);
 
-    // Two more failures would make three in total, which must not end the
-    // stream now that a poll succeeded in between.
+    // One more failure makes three in total, which must not end the stream
+    // now that a poll succeeded in between.
     failing = true;
     await vi.advanceTimersByTimeAsync(500);
     expect(out.ended).toBe(false);

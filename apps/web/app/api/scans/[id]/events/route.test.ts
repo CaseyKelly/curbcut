@@ -61,6 +61,17 @@ describe('GET /api/scans/[id]/events', () => {
     expect(res.status).toBe(404);
   });
 
+  it('still opens the stream when the first database read fails', async () => {
+    // A 500 here would close EventSource for good; the stream recovers instead.
+    mocks.loadScanSignature.mockRejectedValueOnce(new Error('db down'));
+    const res = await get(ID);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
+
+    const body = await res.text();
+    expect(body).toContain('event: done\ndata: {"reason":"final"}');
+  });
+
   it('streams events with the headers an SSE client and proxies need', async () => {
     const res = await get(ID);
     expect(res.status).toBe(200);
