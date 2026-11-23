@@ -48,9 +48,10 @@ export function ScanLive({ initial }: { initial: ScanView }) {
       if (parseDoneReason(event.data) === 'gone') setGone(true);
     });
     events.addEventListener('error', () => {
-      // CLOSED means the browser gave up (a 401 after the session ended, or a
-      // 404 for a scan deleted in the meantime); reloading shows which.
-      // Otherwise it's retrying by itself.
+      // CLOSED means the browser gave up after a non-200 answer: usually a 401 or
+      // 403 once the session or allowlist changed, or a 404 for a deleted scan, but
+      // any server error does the same. Reloading shows which. Otherwise it's
+      // retrying by itself.
       tracker.error(events.readyState === EventSource.CLOSED);
     });
     return () => {
