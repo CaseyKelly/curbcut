@@ -19,8 +19,9 @@ export const CaseRecord = z.strictObject({
   /** Why a scorer failed, or what a crashed case threw. */
   notes: z.array(z.string()),
   /**
-   * What the judge's calls spent (#15): eval cost, not the fixer's, so it's
-   * kept out of `result.costUsd`. Absent when nothing was spent.
+   * What the judge's calls cost at current prices (#15), replayed or not, so
+   * replayed and live runs compare. Eval cost, not the fixer's, so it's kept
+   * out of `result.costUsd`. Real spend is in the report's `spentUsd`.
    */
   judgeCostUsd: z.number().nonnegative().optional(),
 });
@@ -40,7 +41,7 @@ export const RunTotals = z.strictObject({
   errors: z.int().nonnegative(),
   /** The fixer's cost, scorer (e). */
   costUsd: z.number().nonnegative(),
-  /** What the judge spent. Optional so reports from before #15 still parse. */
+  /** What the judge cost, comparably. Optional so reports from before #15 still parse. */
   judgeCostUsd: z.number().nonnegative().optional(),
   latencyMs: z.strictObject({
     p50: z.int().nonnegative(),
@@ -59,6 +60,12 @@ export const RunReport = z.strictObject({
   axeVersion: z.string().optional(),
   /** Whether the judge (d) was asked for, which changes what a fix case needs to pass. */
   judged: z.boolean().optional(),
+  /**
+   * Money the run actually spent, which is what counts toward the monthly
+   * budget (#16). Unlike `totals.costUsd`, it's 0 for replayed calls.
+   * Optional so older reports still parse; a report without it can't be saved.
+   */
+  spentUsd: z.number().nonnegative().optional(),
   totals: RunTotals,
   cases: z.array(CaseRecord),
 });

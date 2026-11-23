@@ -51,7 +51,9 @@ const rows: {
   judgeReason?: string;
   error?: string;
 }[] = [];
+// At current prices (comparable), and what was actually spent (0 when replayed).
 let costUsd = 0;
+let spentUsd = 0;
 // An account-wide error stops the run: agreement on part of the set would mislead.
 const guard = createCallGuard();
 try {
@@ -65,7 +67,8 @@ try {
         llm.context,
       );
       guard.succeeded();
-      costUsd += r.costUsd;
+      costUsd += r.recordedCostUsd;
+      spentUsd += r.costUsd;
       rows.push({
         id: item.id,
         label: label.score,
@@ -112,7 +115,9 @@ console.log(
   `Mean bias       ${result.meanBias >= 0 ? '+' : ''}${result.meanBias.toFixed(2)} (judge minus label)`,
 );
 console.log(`Unlabelled      ${items.length - labelled.length}`);
-console.log(`Cost            $${costUsd.toFixed(4)}`);
+console.log(
+  `Cost            $${costUsd.toFixed(4)} at current prices, $${spentUsd.toFixed(4)} spent`,
+);
 const failed = rows.filter((r) => r.error);
 if (failed.length > 0) {
   console.log(`\nJudge errors:\n${failed.map((r) => `  ${r.id}: ${r.error}`).join('\n')}`);
@@ -136,7 +141,7 @@ const out = resolve(
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(
   out,
-  `${JSON.stringify({ createdAt, model: JUDGE_MODEL, promptVersion: JUDGE_PROMPT_VERSION, agreement: result, costUsd, items: rows }, null, 2)}\n`,
+  `${JSON.stringify({ createdAt, model: JUDGE_MODEL, promptVersion: JUDGE_PROMPT_VERSION, agreement: result, costUsd, spentUsd, items: rows }, null, 2)}\n`,
 );
 const shown = relative(cwd, out);
 console.log(`\nReport: ${shown.startsWith('..') ? out : shown}`);

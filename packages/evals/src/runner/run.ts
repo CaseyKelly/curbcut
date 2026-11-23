@@ -109,6 +109,7 @@ type Work = {
   loaded: LoadedCase;
   input: string;
   costUsd: number;
+  spentUsd: number;
   latencyMs: number;
   notes: string[];
   proposal?: PatchProposal;
@@ -116,8 +117,10 @@ type Work = {
   /** Set when the proposal is a fix whose diff applied. */
   patched?: string;
   scores: EvalScores;
-  /** What the judge's calls spent on this case. */
+  /** The judge's calls at current prices, replayed or not, so runs compare. */
   judgeCostUsd: number;
+  /** What the judge's calls actually spent: 0 when replayed. */
+  judgeSpentUsd: number;
 };
 
 // 1. Propose. Cases run one at a time so latency isn't skewed by contention.
@@ -129,15 +132,18 @@ for (const loaded of cases) {
     loaded,
     input,
     costUsd: 0,
+    spentUsd: 0,
     latencyMs: 0,
     notes: [],
     scores: {},
     judgeCostUsd: 0,
+    judgeSpentUsd: 0,
   };
   const started = performance.now();
   try {
     const r = await fixer.propose(c, input, dir, datasetVersion);
     w.costUsd = r.costUsd;
+    w.spentUsd = r.spentUsd;
     w.latencyMs = r.latencyMs ?? Math.round(performance.now() - started);
     if ('error' in r) {
       w.error = r.error;
@@ -255,7 +261,8 @@ if (llm) {
         const judged = await judgeFix(llm.provider, input, llm.context);
         guard.succeeded();
         w.scores.judge = judged.judgement;
-        w.judgeCostUsd = judged.costUsd;
+        w.judgeCostUsd = judged.recordedCostUsd;
+        w.judgeSpentUsd = judged.costUsd;
         if (judged.judgement.score < JUDGE_PASS_SCORE) {
           w.notes.push(`judge: ${judged.judgement.score}/5: ${judged.judgement.reason}`);
         }
@@ -316,6 +323,8 @@ const report = RunReport.parse({
   promptVersion: fixer.promptVersion,
   axeVersion,
   judged: values.judge,
+  // The fixer's and the judge's real spend: what the budget counts once saved.
+  spentUsd: work.reduce((sum, w) => sum + w.spentUsd + w.judgeSpentUsd, 0),
   totals: totals(records),
   cases: records,
 });

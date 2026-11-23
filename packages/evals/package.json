@@ -11,13 +11,16 @@
     "scan:sample-site": "node src/sample-site/scan.ts",
     "evals:validate": "node src/dataset/validate.ts",
     "evals": "tsx --env-file-if-exists=../../.env src/runner/run.ts",
-    "evals:calibrate": "tsx --env-file-if-exists=../../.env src/calibration/calibrate.ts"
+    "evals:calibrate": "tsx --env-file-if-exists=../../.env src/calibration/calibrate.ts",
+    "evals:save": "tsx --env-file-if-exists=../../.env src/store/save-run.ts",
+    "evals:compare": "tsx --env-file-if-exists=../../.env src/store/compare-runs.ts"
   },
   "dependencies": {
     "@curbcut/agent": "^0.0.0",
     "@curbcut/core": "^0.0.0",
     "@curbcut/db": "^0.0.0",
     "diff": "^9.0.0",
+    "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
