@@ -50,7 +50,7 @@ Runs on main (dataset v2)
   ...
 ```
 
-**Which runs.** Runs with `branch = 'main'` and the chosen `dataset_version`, oldest to newest, at most the latest 50. The dataset picker lists every version that has a main run, newest first, with its run count, and defaults to the newest. PR runs never appear in trends: they'd mix unmerged changes into `main`'s line. Once #17 marks runs that stopped at their cost cap as incomplete, leave those out of the charts (list them in the table, labelled "incomplete"), because a partial run would show up as a fake dip.
+**Which runs.** Runs with `branch = 'main'` and the chosen `dataset_version`, oldest to newest, at most the latest 50. The dataset picker lists every version that has a main run, newest first, with its run count, and defaults to the newest. PR runs never appear in trends: they'd mix unmerged changes into `main`'s line. Trends also use only full-tier runs, since a smoke run (about 15 cases) would show up as a fake step. Today that needs no filter, because the smoke tier only runs on PRs, but #17 should record each run's tier so the page can filter on it. Once #17 marks runs that stopped at their cost cap as incomplete, leave those out of the charts (list them in the table, labelled "incomplete"), because a partial run would show up as a fake dip.
 
 **Latest run summary.** The latest run's headline numbers, each with its change from the previous main run, in the same units and wording as the CLI: rates in percent, changes in points.
 
@@ -67,6 +67,8 @@ Runs on main (dataset v2)
 | p95 latency        | `latencyMs.p95`                        | none                                   |
 
 The thresholds come from the plan's [threshold table](project-plan.md#eval-design). Define them once in code (they're shared with #17's gate), not as numbers in the page.
+
+There's no chart for unsure cases, the one metric `compareRuns` reports that isn't above. There are two of them, so the rate can only be 0%, 50% or 100%, and a line would swing wildly over one case. They're the `needs-human` row of the category table below, which shows them as "passed/cases". A rate with no cases behind it (a dataset version with no unsure cases) is "n/a", as `compareRuns` returns it, never 0%.
 
 **Marking changes.** A trend is only useful if you can see what caused a step in it. Mark each point where `prompt_version` or `model` differs from the previous run with a labelled tick under the axis ("prompt fix-v2", "model sonnet-5-5"), and give it its own row in the data table. This is how prompt iteration #1 (#19) shows its before and after.
 
@@ -108,11 +110,11 @@ Cases that changed (3)              [Show all 51 cases]
 
 **Header.** For each run: branch, commit (linked), trigger, model, prompt version, dataset version, and date. Then the number of shared cases, and any cases in only one run ("Only in head: …"), as `compareRuns` reports them.
 
-**Metrics.** `compareRuns(base, head).metrics`, in the order it returns them: base, head, and the change. A change gets a word, not just a color: "+2.0 pts", "−1", "no change". Where head crosses one of the plan's gates (pass rate below 70%, a drop of more than 5 points, any build break, no-change accuracy below 90%), the row says so in text ("below the 90% gate"), with an icon as well as color. These are the same checks #17 fails a PR on, so take them from the same code.
+**Metrics.** `compareRuns(base, head).metrics`, in the order it returns them: base, head, and the change. A change gets a word, not just a color: "+2.0 pts", "−1", "no change". Where head crosses one of the plan's gates (pass rate below 70%, a drop of more than 5 points, any build break, no-change accuracy below 90%), the row says so in text. The drop gate is measured against the latest main run, so only check it when the base is `main`; against any other base, a drop is just a change ("below the 90% gate"), with an icon as well as color. These are the same checks #17 fails a PR on, so take them from the same code.
 
 **Categories.** `compareRuns(...).categories`: category, base and head as "passed/cases", and the change in points.
 
-**Cases.** Changed cases first, grouped and ordered as `compareRuns` returns them: regressed, then fixed, then changed. Each is a `<details>` element: the summary line shows the change and the case id, and opening it shows, for base and head side by side (stacked on narrow screens):
+**Cases.** Changed cases first, grouped and ordered as `compareRuns` returns them: regressed, then fixed, then changed. Each is a `<details>` element: the summary line shows the change and the case id, and opening it shows, for base and head side by side (stacked on narrow screens), the fields below. `compareRuns` only returns a summary line per field that changed (`CaseDiff.details`), so take these from each run's `StoredRun.report.cases`, matched by case id:
 
 - outcome, and expected outcome
 - scores (a) to (c) as "pass" or "fail", and the judge's score and reason if there is one
@@ -152,5 +154,5 @@ Suggested order, so each step is reviewable on its own:
 
 1. **Importing `@curbcut/evals` into the web app.** Its package exports only an empty `index.ts`, and its source imports with `.ts` extensions, which Next may not resolve. Options: a subpath export (say `@curbcut/evals/store`) added to `transpilePackages`, or moving `compareRuns` somewhere both can reach. Casey's call; whichever it is, the CLI, the PR comment and this page must share one implementation.
 2. **Judge trend.** A mean judge score per run would be worth charting once the judge runs in CI (#15), but `RunTotals` doesn't carry one yet. Adding it is an evals change (Upasana); add the chart then.
-3. **Incomplete runs.** #17 decides how a run that hit its cost cap is marked. This page needs that marker to leave such runs out of the charts.
+3. **Incomplete runs and tiers.** #17 decides how a run that hit its cost cap is marked, and where a run's tier is recorded. This page needs both, to leave partial and smoke runs out of the charts.
 4. **Where the gate thresholds live.** The page and #17's check both need them. They should be one constant, probably next to `compareRuns`, defined when #17 lands. Until then, the page can show the reference lines without the gate wording.
