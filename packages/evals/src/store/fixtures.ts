@@ -53,6 +53,7 @@ export function report(cases: CaseRecord[], overrides: Partial<RunReport> = {}):
     model: 'claude-test',
     promptVersion: 'fix-v1',
     axeVersion: '4.11.0',
+    spentUsd: 0.02,
     totals: totals(cases),
     cases,
     ...overrides,

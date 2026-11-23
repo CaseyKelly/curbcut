@@ -36,6 +36,11 @@ export function toRows(
   if (report.mode !== 'live') {
     throw new Error(`only live runs are saved; this report is a ${report.mode} run`);
   }
+  // `cost_usd` is what the budget sums, so it must be real spend, never the
+  // recorded cost of replayed calls (which `totals` keeps for comparisons).
+  if (report.spentUsd === undefined) {
+    throw new Error("the report doesn't say what the run spent (spentUsd); re-run it");
+  }
   const results = report.cases.map((record): ResultRow => {
     const r = record.result;
     // The runner stamps each result with the run's versions; a mismatch means
@@ -80,7 +85,7 @@ export function toRows(
       promptVersion: report.promptVersion,
       axeVersion: report.axeVersion ?? null,
       totals: report.totals,
-      costUsd: report.totals.costUsd,
+      costUsd: report.spentUsd,
       createdAt: new Date(report.createdAt),
     },
     results,
@@ -137,6 +142,7 @@ export function fromRows(
     model: run.model,
     promptVersion: run.promptVersion,
     ...(run.axeVersion === null ? {} : { axeVersion: run.axeVersion }),
+    spentUsd: run.costUsd,
     totals: RunTotals.parse(run.totals),
     cases,
   });

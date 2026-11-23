@@ -23,6 +23,21 @@ describe('toRows', () => {
     expect(() => toRows(report([], { mode: 'rescore' }), source)).toThrow(/rescore run/);
   });
 
+  it('stores real spend for the budget, not the comparable cost', () => {
+    // A replayed run: its cases carry the recorded cost, but nothing was spent.
+    const replayed = report(sample().cases, { spentUsd: 0 });
+    const { run } = toRows(replayed, source);
+    expect(run.costUsd).toBe(0);
+    expect(run.totals).toMatchObject({ costUsd: sample().totals.costUsd });
+    expect(sample().totals.costUsd).toBeGreaterThan(0);
+  });
+
+  it("refuses a report that doesn't say what it spent", () => {
+    const old = sample();
+    delete old.spentUsd;
+    expect(() => toRows(old, source)).toThrow(/spentUsd/);
+  });
+
   it("refuses a result stamped with another run's versions", () => {
     const r = record('a');
     r.result.promptVersion = 'other';
@@ -31,7 +46,7 @@ describe('toRows', () => {
 
   it('maps scores to columns and back', () => {
     const { run, results } = toRows(sample(), source);
-    expect(run).toMatchObject({ ...source, costUsd: sample().totals.costUsd });
+    expect(run).toMatchObject({ ...source, costUsd: 0.02 });
     expect(results[0]).toMatchObject({ buildOk: true, judgeScore: 4, judgeModel: 'j' });
     expect(results[2]).toMatchObject({ resolved: null, scopeOk: true });
     expect(results[3]).toMatchObject({ outcome: 'error', error: 'boom' });

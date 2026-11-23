@@ -46,6 +46,12 @@ export const RunReport = z.strictObject({
   model: z.string().min(1),
   promptVersion: z.string().min(1),
   axeVersion: z.string().optional(),
+  /**
+   * Money the run actually spent, which is what counts toward the monthly
+   * budget (#16). Unlike `totals.costUsd`, it's 0 for replayed calls.
+   * Optional so older reports still parse; a report without it can't be saved.
+   */
+  spentUsd: z.number().nonnegative().optional(),
   totals: RunTotals,
   cases: z.array(CaseRecord),
 });

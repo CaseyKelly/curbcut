@@ -8,10 +8,11 @@ type Tally = { cases: number; passed: number };
 export interface Metric {
   name: string;
   unit: 'rate' | 'count' | 'usd' | 'ms';
-  base: number;
-  head: number;
-  /** For a rate, in percentage points. */
-  delta: number;
+  /** Null for a rate with no cases behind it (a dataset with no unsure cases), not 0%. */
+  base: number | null;
+  head: number | null;
+  /** For a rate, in percentage points. Null when either side is. */
+  delta: number | null;
 }
 
 export type CaseChange = 'regressed' | 'fixed' | 'changed';
@@ -36,19 +37,21 @@ export interface RunComparison {
   cases: CaseDiff[];
 }
 
-const rate = (t: Tally | undefined) => (t && t.cases > 0 ? t.passed / t.cases : 0);
+/** Null with no cases: an empty kind of case hasn't failed, it isn't there. */
+const rate = (t: Tally | undefined) => (t && t.cases > 0 ? t.passed / t.cases : null);
 const points = (base: number, head: number) => Math.round((head - base) * 1000) / 10;
 
 /** The headline numbers, in the order they're shown. */
 function metrics(base: RunTotals, head: RunTotals): Metric[] {
-  const m = (name: string, unit: Metric['unit'], pick: (t: RunTotals) => number): Metric => {
+  const m = (name: string, unit: Metric['unit'], pick: (t: RunTotals) => number | null): Metric => {
     const b = pick(base);
     const h = pick(head);
-    return { name, unit, base: b, head: h, delta: unit === 'rate' ? points(b, h) : h - b };
+    const delta = b === null || h === null ? null : unit === 'rate' ? points(b, h) : h - b;
+    return { name, unit, base: b, head: h, delta };
   };
   const byExpected = (o: PatchOutcome) => (t: RunTotals) => rate(t.byExpected[o]);
   return [
-    m('pass rate', 'rate', (t) => t.passRate),
+    m('pass rate', 'rate', (t) => (t.cases === 0 ? null : t.passRate)),
     m('fix cases', 'rate', byExpected('fix')),
     m('no-change accuracy', 'rate', byExpected('no_change_needed')),
     m('unsure cases', 'rate', byExpected('unsure')),
@@ -120,7 +123,7 @@ export function compareRuns(base: RunReport, head: RunReport): RunComparison {
   const categories = categoryNames.map((category) => {
     const b = baseTotals.byCategory[category] ?? empty;
     const h = headTotals.byCategory[category] ?? empty;
-    return { category, base: b, head: h, delta: points(rate(b), rate(h)) };
+    return { category, base: b, head: h, delta: points(rate(b) ?? 0, rate(h) ?? 0) };
   });
 
   return {
@@ -136,7 +139,8 @@ export function compareRuns(base: RunReport, head: RunReport): RunComparison {
 
 const signed = (n: number, digits = 0) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`;
 
-function formatValue(unit: Metric['unit'], v: number): string {
+function formatValue(unit: Metric['unit'], v: number | null): string {
+  if (v === null) return 'n/a';
   switch (unit) {
     case 'rate':
       return `${(v * 100).toFixed(1)}%`;
@@ -149,7 +153,8 @@ function formatValue(unit: Metric['unit'], v: number): string {
   }
 }
 
-function formatDelta(unit: Metric['unit'], d: number): string {
+function formatDelta(unit: Metric['unit'], d: number | null): string {
+  if (d === null) return '';
   if (d === 0) return '0';
   switch (unit) {
     case 'rate':

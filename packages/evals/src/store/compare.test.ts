@@ -23,6 +23,17 @@ describe('compareRuns', () => {
     expect(metric('build breaks')).toMatchObject({ base: 0, head: 1, delta: 1 });
   });
 
+  it('shows a kind of case the runs lack as n/a, not 0%', () => {
+    const r = report([record('a')]);
+    const c = compareRuns(r, r);
+    expect(c.metrics.find((m) => m.name === 'unsure cases')).toMatchObject({
+      base: null,
+      head: null,
+      delta: null,
+    });
+    expect(comparisonLines(c, 'a', 'b').join('\n')).toMatch(/unsure cases\s+n\/a\s+n\/a\n/);
+  });
+
   it('lists changed cases, regressions first', () => {
     const base = report([
       record('a', { scores: { ...ok, resolved: false }, pass: false }),

@@ -345,7 +345,11 @@ export const evalRuns = pgTable(
     axeVersion: text('axe_version'),
     /** The report's `RunTotals`, parsed with that schema when read. */
     totals: jsonb('totals').notNull(),
-    /** Also in `totals`; a column so the monthly budget can sum it (#6). */
+    /**
+     * Money the run actually spent (the report's `spentUsd`), which the monthly
+     * budget sums (#6). Replayed calls cost nothing here; the comparable cost,
+     * replayed or not, is `totals.costUsd`.
+     */
     costUsd,
     /** When the run started (the report's `createdAt`), so the latest run is the newest code. */
     createdAt,

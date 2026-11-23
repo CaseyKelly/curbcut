@@ -4,6 +4,10 @@
 //
 // The git SHA and branch default to GitHub Actions' variables, then to the
 // local checkout. Needs DATABASE_URL. Prints the new run's id.
+//
+// A run on `main` can only be saved from GitHub Actions: `main` runs are the
+// baseline PRs are judged against, and a local checkout may have changes
+// that aren't on main.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -40,14 +44,32 @@ try {
   fail(`Can't read ${positionals[0]}: ${(e as Error).message}`);
 }
 
-// On a pull_request event GITHUB_SHA is the merge commit and GITHUB_REF_NAME
-// is `<n>/merge`, so a PR's own branch comes from GITHUB_HEAD_REF.
-const gitSha = values.sha ?? process.env.GITHUB_SHA ?? git('rev-parse', 'HEAD');
+/**
+ * The PR's head commit on a pull_request event. There GITHUB_SHA is a
+ * temporary merge commit with main, which nobody can look up later.
+ */
+function pullRequestHeadSha(): string | undefined {
+  const path = process.env.GITHUB_EVENT_PATH;
+  if (!process.env.GITHUB_EVENT_NAME?.startsWith('pull_request') || !path) return undefined;
+  const event = JSON.parse(readFileSync(path, 'utf8')) as {
+    pull_request?: { head?: { sha?: string } };
+  };
+  return event.pull_request?.head?.sha;
+}
+
+// On a pull_request event GITHUB_REF_NAME is `<n>/merge`, so a PR's own
+// branch comes from GITHUB_HEAD_REF.
+const gitSha =
+  values.sha ?? pullRequestHeadSha() ?? process.env.GITHUB_SHA ?? git('rev-parse', 'HEAD');
 const branch =
   values.branch ||
   process.env.GITHUB_HEAD_REF ||
   process.env.GITHUB_REF_NAME ||
   git('rev-parse', '--abbrev-ref', 'HEAD');
+
+if (branch === 'main' && process.env.GITHUB_ACTIONS !== 'true') {
+  fail('Runs on main are the baseline, so only GitHub Actions saves them.');
+}
 
 const db = createDb();
 try {

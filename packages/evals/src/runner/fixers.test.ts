@@ -80,12 +80,13 @@ describe('rescoreFixer', () => {
     return path;
   };
 
-  it('returns the recorded proposal, cost and latency', async () => {
+  it('returns the recorded proposal, cost and latency, spending nothing', async () => {
     const fixer = rescoreFixer(write(c.version));
     expect(fixer.model).toBe('claude-sonnet-5-5');
     await expect(fixer.propose(c, '', dir, datasetVersion)).resolves.toEqual({
       proposal,
       costUsd: 0.02,
+      spentUsd: 0,
       latencyMs: 1234,
     });
   });
@@ -95,6 +96,7 @@ describe('rescoreFixer', () => {
     await expect(fixer.propose(c, '', dir, datasetVersion)).resolves.toEqual({
       error: 'boom',
       costUsd: 0.02,
+      spentUsd: 0,
       latencyMs: 1234,
     });
   });
@@ -104,6 +106,7 @@ describe('rescoreFixer', () => {
     await expect(fixer.propose(c, '', dir, datasetVersion)).resolves.toEqual({
       error: 'recording has no proposal',
       costUsd: 0.02,
+      spentUsd: 0,
       latencyMs: 1234,
     });
   });

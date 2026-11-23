@@ -20,7 +20,16 @@ export type FixerResult = (
   /** A failure the fixer can still give metrics for (a recorded error). */
   | { error: string }
 ) & {
+  /**
+   * What the case costs at current prices, scorer (e). In replay it's the
+   * recorded calls' price, so replayed and live runs compare (`recordedCostUsd`).
+   */
   costUsd: number;
+  /**
+   * Money actually spent: 0 for replayed or recorded-and-reused calls. Only
+   * this counts toward the monthly budget once the run is saved (#16).
+   */
+  spentUsd: number;
   /** Set when the fixer knows better than the runner's wall clock (rescore). */
   latencyMs?: number;
 };
@@ -47,7 +56,7 @@ export const referenceFixer: Fixer = {
     } else {
       proposal = { outcome: 'no_change_needed', explanation, confidence: 1 };
     }
-    return Promise.resolve({ proposal, costUsd: 0 });
+    return Promise.resolve({ proposal, costUsd: 0, spentUsd: 0 });
   },
 };
 
@@ -64,7 +73,8 @@ export function rescoreFixer(reportPath: string): Fixer {
         const r = byCase.get(c.id);
         if (!r) throw new Error(`no recording for this case in ${reportPath}`);
         const { result } = r;
-        const metrics = { costUsd: result.costUsd, latencyMs: result.latencyMs };
+        // The recorded cost stays comparable; nothing is spent again.
+        const metrics = { costUsd: result.costUsd, spentUsd: 0, latencyMs: result.latencyMs };
         // A case that changed since the recording would score a stale answer.
         if (result.caseVersion !== c.version || result.datasetVersion !== datasetVersion) {
           throw new Error(
