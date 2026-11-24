@@ -223,7 +223,7 @@ A fix case passes when (a), (b), and (c) all pass and the judge gives 3 or more 
 
 The runner stops when it hits its cap and reports the run as incomplete, not failed. The dollar caps are placeholders until M1 measures the real cost per case.
 
-**Tracking over time.** Every live run writes to `eval_runs` and `eval_results`. The CI job posts a PR comment showing the score diff against main, broken out by category. A `/evals` page in the app charts each metric over time and compares any two runs case by case. That comparison is how a prompt change gets accepted or rejected.
+**Tracking over time.** Every live run writes to `eval_runs` and `eval_results`. The CI job posts a PR comment showing the score diff against main, broken out by category. A `/evals` page in the app charts each metric over time and compares any two runs case by case ([spec](evals-page.md)). That comparison is how a prompt change gets accepted or rejected.
 
 ## Milestones
 
