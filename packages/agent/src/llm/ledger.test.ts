@@ -52,7 +52,13 @@ describe.skipIf(!process.env.DATABASE_URL)('createDbLedger', () => {
   it('adds each call to the run and its scan', async () => {
     const ledger = createDbLedger(db);
     const run = await newRun();
-    const call = { runId: run.id, model: 'claude-haiku-5-5', inputTokens: 100, outputTokens: 10 };
+    const call = {
+      runId: run.id,
+      model: 'claude-haiku-5-5',
+      inputTokens: 100,
+      outputTokens: 10,
+      recordedCostUsd: 0,
+    };
     await ledger.record({ ...call, costUsd: 0.000123 });
     await ledger.record({ ...call, costUsd: 0.000877 });
 
@@ -70,6 +76,7 @@ describe.skipIf(!process.env.DATABASE_URL)('createDbLedger', () => {
         inputTokens: 1,
         outputTokens: 1,
         costUsd: 0.01,
+        recordedCostUsd: 0.01,
       }),
     ).rejects.toThrow(/No agent run/);
   });
@@ -80,7 +87,7 @@ describe.skipIf(!process.env.DATABASE_URL)('createDbLedger', () => {
     const before = await ledger.monthToDateSpendUsd();
     const old = await newRun(new Date(startOfMonthUtc().getTime() - 1));
     const current = await newRun();
-    const call = { model: 'claude-haiku-5-5', inputTokens: 1, outputTokens: 1 };
+    const call = { model: 'claude-haiku-5-5', inputTokens: 1, outputTokens: 1, recordedCostUsd: 0 };
     await ledger.record({ ...call, runId: old.id, costUsd: 5 });
     await ledger.record({ ...call, runId: current.id, costUsd: 0.25 });
     expect((await ledger.monthToDateSpendUsd()) - before).toBeCloseTo(0.25);
