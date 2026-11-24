@@ -10,11 +10,15 @@
     "typecheck": "tsc -p . && tsc -p dataset",
     "scan:sample-site": "node src/sample-site/scan.ts",
     "evals:validate": "node src/dataset/validate.ts",
-    "evals": "node src/runner/run.ts"
+    "evals": "node src/runner/run.ts",
+    "evals:save": "tsx --env-file-if-exists=../../.env src/store/save-run.ts",
+    "evals:compare": "tsx --env-file-if-exists=../../.env src/store/compare-runs.ts"
   },
   "dependencies": {
     "@curbcut/core": "^0.0.0",
+    "@curbcut/db": "^0.0.0",
     "diff": "^9.0.0",
+    "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -27,6 +31,7 @@
     "playwright": "^1.64.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
     "vite": "^8.3.5"
   }
 }

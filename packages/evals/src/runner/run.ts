@@ -86,6 +86,7 @@ type Work = {
   loaded: LoadedCase;
   input: string;
   costUsd: number;
+  spentUsd: number;
   latencyMs: number;
   notes: string[];
   proposal?: PatchProposal;
@@ -100,11 +101,20 @@ const work: Work[] = [];
 for (const loaded of cases) {
   const { case: c, dir } = loaded;
   const input = readFileSync(join(dir, 'input', c.filePath), 'utf8');
-  const w: Work = { loaded, input, costUsd: 0, latencyMs: 0, notes: [], scores: {} };
+  const w: Work = {
+    loaded,
+    input,
+    costUsd: 0,
+    spentUsd: 0,
+    latencyMs: 0,
+    notes: [],
+    scores: {},
+  };
   const started = performance.now();
   try {
     const r = await fixer.propose(c, input, dir, datasetVersion);
     w.costUsd = r.costUsd;
+    w.spentUsd = r.spentUsd;
     w.latencyMs = r.latencyMs ?? Math.round(performance.now() - started);
     if ('error' in r) {
       w.error = r.error;
@@ -239,6 +249,7 @@ const report = RunReport.parse({
   model: fixer.model,
   promptVersion: fixer.promptVersion,
   axeVersion,
+  spentUsd: work.reduce((sum, w) => sum + w.spentUsd, 0),
   totals: totals(records),
   cases: records,
 });

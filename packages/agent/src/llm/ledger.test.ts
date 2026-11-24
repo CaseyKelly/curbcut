@@ -1,6 +1,6 @@
 // Integration tests for the database ledger. Skipped without DATABASE_URL,
 // like the db package's tests.
-import { agentRuns, createDb, scans, type Db } from '@curbcut/db';
+import { agentRuns, createDb, evalRuns, scans, type Db } from '@curbcut/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDbLedger, startOfMonthUtc } from './ledger';
@@ -16,6 +16,7 @@ describe('startOfMonthUtc', () => {
 describe.skipIf(!process.env.DATABASE_URL)('createDbLedger', () => {
   let db: Db;
   const scanIds: string[] = [];
+  const evalRunIds: string[] = [];
 
   beforeAll(() => {
     db = createDb();
@@ -25,6 +26,7 @@ describe.skipIf(!process.env.DATABASE_URL)('createDbLedger', () => {
     if (!db) return;
     // Runs cascade.
     for (const id of scanIds) await db.delete(scans).where(eq(scans.id, id));
+    for (const id of evalRunIds) await db.delete(evalRuns).where(eq(evalRuns.id, id));
     await db.$client.end();
   });
 
@@ -82,5 +84,27 @@ describe.skipIf(!process.env.DATABASE_URL)('createDbLedger', () => {
     await ledger.record({ ...call, runId: old.id, costUsd: 5 });
     await ledger.record({ ...call, runId: current.id, costUsd: 0.25 });
     expect((await ledger.monthToDateSpendUsd()) - before).toBeCloseTo(0.25);
+  });
+
+  it("adds this month's eval runs (#16)", async () => {
+    const ledger = createDbLedger(db);
+    const before = await ledger.monthToDateSpendUsd();
+    const evalRun = (costUsd: number, createdAt?: Date) => ({
+      gitSha: 'abc',
+      branch: 'test',
+      trigger: 'manual' as const,
+      datasetVersion: 1,
+      model: 'm',
+      promptVersion: 'v1',
+      totals: {},
+      costUsd,
+      createdAt,
+    });
+    const rows = await db
+      .insert(evalRuns)
+      .values([evalRun(1.5), evalRun(7, new Date(startOfMonthUtc().getTime() - 1))])
+      .returning({ id: evalRuns.id });
+    evalRunIds.push(...rows.map((r) => r.id));
+    expect((await ledger.monthToDateSpendUsd()) - before).toBeCloseTo(1.5);
   });
 });
