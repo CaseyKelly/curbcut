@@ -64,4 +64,26 @@ describe('liveFixer', () => {
     // Two Sonnet calls of 2,000 in and 300 out at $2/$10 per million.
     expect(r.costUsd).toBeCloseTo(2 * (0.004 + 0.003));
   });
+
+  it('replays when asked to, whatever LLM_MODE says (#13)', async () => {
+    // Live mode would need an API key and spend money; a forced replay needs neither.
+    vi.stubEnv('LLM_MODE', 'live');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('DATABASE_URL', '');
+    const empty = mkdtempSync(join(tmpdir(), 'live-fixer-empty-'));
+    try {
+      const fixer = await liveFixer({ runId: 'eval', recordingsDir: empty, mode: 'replay' });
+      expect(fixer.llmMode).toBe('replay');
+      expect(fixer.priorSpendUsd).toBeUndefined();
+      // No recording: the case fails without reaching the API.
+      const r = await fixer.propose(c, input, dir, manifest!.datasetVersion);
+      expect(r).toMatchObject({
+        error: expect.stringContaining('No recorded LLM response') as string,
+        costUsd: 0,
+      });
+      expect(r.spentUsd).toBe(0);
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
 });

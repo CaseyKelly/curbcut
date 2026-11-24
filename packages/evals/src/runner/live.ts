@@ -6,7 +6,9 @@
 // `LLM_MODE` picks live, record, or replay, as everywhere else. Outside
 // production it defaults to replay, which serves recordings from
 // `LLM_RECORDINGS_DIR` (here, `packages/evals/recordings` unless set) and
-// fails a case that has none. Record with `LLM_MODE=record`.
+// fails a case that has none. Record with `LLM_MODE=record`. The runner's
+// `--replay` passes `mode: 'replay'`, which wins over `LLM_MODE`, so that run
+// can't spend money whatever the environment says (#13).
 //
 // Spend goes to an in-memory ledger: a run is saved to `eval_runs` only once
 // it finishes (`npm run evals:save`, #16). When the run spends money and
@@ -44,9 +46,12 @@ async function readMonthSpend(url: string): Promise<number> {
 export async function liveFixer({
   runId,
   recordingsDir,
+  mode,
 }: {
   runId: string;
   recordingsDir: string;
+  /** Overrides `LLM_MODE`. */
+  mode?: LLMMode;
 }): Promise<LiveFixer> {
   const memory = createMemoryLedger();
   let priorSpendUsd: number | undefined;
@@ -56,6 +61,7 @@ export async function liveFixer({
   };
   const provider = createProvider({
     ledger,
+    mode,
     recordingsDir: process.env.LLM_RECORDINGS_DIR ?? recordingsDir,
   });
   // Replay spends nothing and skips the guard, so it never needs the database.
