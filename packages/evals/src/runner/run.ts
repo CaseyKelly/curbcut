@@ -30,6 +30,7 @@ import { judgeFix, judgeInput } from '../scorers/judge.ts';
 import { scanPages, scoreResolved, type Page } from '../scorers/resolved.ts';
 import { scoreScoped } from '../scorers/scoped.ts';
 import { referenceFixer, rescoreFixer, type Fixer } from './fixers.ts';
+import type { UsageLedger } from '@curbcut/agent';
 import { createCallGuard, createEvalLLM, type EvalLLM } from './llm.ts';
 import { applyDiff } from './patch.ts';
 import {
@@ -58,6 +59,8 @@ const { values } = parseArgs({
 
 let mode: RunMode;
 let fixer: Fixer;
+/** The live fixer's ledger, which the judge shares so one guard sees all the run's spend. */
+let liveLedger: UsageLedger | undefined;
 if (values.reference && values.rescore) {
   console.error('Use --reference or --rescore, not both.');
   process.exit(2);
@@ -89,6 +92,7 @@ if (values.reference && values.rescore) {
       `Live fixer: ${live.model}, prompt ${live.promptVersion}, LLM_MODE=${live.llmMode}${spend}`,
     );
     fixer = live;
+    liveLedger = live.ledger;
   } catch (e) {
     console.error(`Can't start the live fixer: ${(e as Error).message}`);
     process.exit(2);
@@ -100,7 +104,7 @@ if (values.reference && values.rescore) {
 let llm: EvalLLM | undefined;
 if (values.judge) {
   try {
-    llm = createEvalLLM();
+    llm = createEvalLLM({ ledger: liveLedger });
   } catch (e) {
     console.error(`Can't run the judge: ${(e as Error).message}`);
     process.exit(2);

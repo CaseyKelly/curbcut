@@ -30,6 +30,11 @@ export interface LiveFixer extends Fixer {
   llmMode: LLMMode;
   /** Month-to-date spend read from the database, or undefined if it wasn't read. */
   priorSpendUsd: number | undefined;
+  /**
+   * The run's spend so far, on top of `priorSpendUsd`. The judge (#15) charges
+   * its calls here too, so one budget guard sees the fixer's and the judge's.
+   */
+  ledger: UsageLedger;
 }
 
 async function readMonthSpend(url: string): Promise<number> {
@@ -68,6 +73,7 @@ export async function liveFixer({
     promptVersion: FIX_PROMPT_VERSION,
     llmMode: provider.mode,
     priorSpendUsd,
+    ledger,
     async propose(c, input) {
       const before = memory.records.length;
       try {
@@ -82,8 +88,8 @@ export async function liveFixer({
         // answer, a repair that still failed) still cost them, every attempt
         // included. Priced from the tokens, as for a success; spent is 0 in replay.
         // Slicing from `before` is right only because the runner proposes one
-        // case at a time; run cases in parallel and this would count another
-        // case's calls. Charge per case then (a ledger per case, say).
+        // case at a time, and judges only after every proposal; run cases in
+        // parallel, or judge while proposing, and this would count other calls. Charge per case then (a ledger per case, say).
         const calls = memory.records.slice(before);
         const sum = (pick: (u: (typeof calls)[number]) => number) =>
           calls.reduce((total, u) => total + pick(u), 0);

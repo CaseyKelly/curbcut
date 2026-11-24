@@ -1,7 +1,8 @@
 // The LLM provider for eval runs (#15). Evals have no `agent_runs` row to
 // charge, so their spend is kept with the run and stored with it (#16). The
 // budget guard still sees the month's spend from the database when
-// DATABASE_URL is set; without it, only this run's.
+// DATABASE_URL is set; without it, only this run's. A run with the live fixer
+// passes its ledger in, so the guard also sees what the fixer has spent.
 //
 // The mode comes from LLM_MODE as everywhere else: `replay` (the default
 // outside production) serves recordings from LLM_RECORDINGS_DIR for free,
@@ -16,6 +17,7 @@ import {
   StructuredOutputError,
   type CallContext,
   type LLMProvider,
+  type SendMessage,
   type UsageLedger,
 } from '@curbcut/agent';
 import { createDb, type Db } from '@curbcut/db';
@@ -33,7 +35,26 @@ export interface EvalLLM {
   close(): Promise<void>;
 }
 
-export function createEvalLLM(): EvalLLM {
+export interface EvalLLMOptions {
+  /**
+   * Where the calls are charged and the guard reads spend from: the live
+   * fixer's ledger, which already counts the month's earlier spend. Default:
+   * a ledger of the judge's own calls, plus the database's spend if
+   * DATABASE_URL is set.
+   */
+  ledger?: UsageLedger;
+  /** Replaces the Anthropic client. For tests. */
+  send?: SendMessage;
+}
+
+export function createEvalLLM({ ledger: shared, send }: EvalLLMOptions = {}): EvalLLM {
+  if (shared) {
+    return {
+      provider: createProvider({ ledger: shared, send }),
+      context: { runId: randomUUID() },
+      close: () => Promise.resolve(),
+    };
+  }
   const db: Db | undefined = process.env.DATABASE_URL ? createDb() : undefined;
   let spentUsd = 0;
   const ledger: UsageLedger = {
@@ -55,7 +76,7 @@ export function createEvalLLM(): EvalLLM {
     },
   };
   return {
-    provider: createProvider({ ledger }),
+    provider: createProvider({ ledger, send }),
     context: { runId: randomUUID() },
     close: async () => {
       await db?.$client.end();
