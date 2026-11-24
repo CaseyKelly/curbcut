@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildScanView,
   isFinal,
+  parseDoneReason,
+  parseScanEvent,
   MAX_ELEMENTS_PER_GROUP,
   ScanView,
   type IssueRow,
@@ -160,5 +162,23 @@ describe('buildScanView groups', () => {
       new Map([['e1', explanation]]),
     );
     expect(ScanView.parse(JSON.parse(JSON.stringify(view)))).toEqual(view);
+  });
+});
+
+describe('parsing events', () => {
+  it('reads a scan event, and returns null for anything the page cannot show', () => {
+    const view = buildScanView(scan(), [], new Map());
+    expect(parseScanEvent(JSON.stringify(view))).toEqual(view);
+    expect(parseScanEvent('not json')).toBeNull();
+    expect(parseScanEvent('{}')).toBeNull();
+    expect(parseScanEvent(JSON.stringify({ ...view, extra: 1 }))).toBeNull();
+  });
+
+  it('reads the reason a stream ended, and returns null for a bad payload', () => {
+    expect(parseDoneReason('{"reason":"final"}')).toBe('final');
+    expect(parseDoneReason('{"reason":"gone"}')).toBe('gone');
+    expect(parseDoneReason('{"reason":"other"}')).toBeNull();
+    expect(parseDoneReason('null')).toBeNull();
+    expect(parseDoneReason('<html>')).toBeNull();
   });
 });

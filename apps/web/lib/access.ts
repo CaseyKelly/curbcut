@@ -10,6 +10,27 @@ export const SIGN_IN_PATH = '/sign-in';
 export const NOT_AUTHORIZED_PATH = '/not-authorized';
 
 /**
+ * `value` if it's a path on this site, else null. Used on the sign-in page's
+ * `callbackUrl`, which anyone can set, as well as on paths built in code. A
+ * second `/` or `\` would make it another host (`//evil.example`), and URL
+ * parsers drop tabs and newlines, so `/\t/evil.example` would become one:
+ * control characters are refused anywhere in it. Auth.js also checks the
+ * origin; this doesn't rely on that.
+ */
+export function safeReturnTo(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  // eslint-disable-next-line no-control-regex
+  if (!/^\/(?![/\\])/.test(value) || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  return value;
+}
+
+/** The sign-in page, carrying where to land afterwards if that's a path of ours. */
+export function signInPath(returnTo?: string): string {
+  const path = safeReturnTo(returnTo);
+  return path ? `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(path)}` : SIGN_IN_PATH;
+}
+
+/**
  * Parses `ALLOWED_GITHUB_LOGINS` (comma-separated). GitHub logins are
  * case-insensitive, so they're compared lowercased. An unset or empty value
  * allows no one: a missing env var must not open the app.

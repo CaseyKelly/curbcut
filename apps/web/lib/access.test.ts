@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decideAccess, isAllowedLogin, isPublicPath, parseAllowlist } from './access';
+import {
+  decideAccess,
+  isAllowedLogin,
+  isPublicPath,
+  parseAllowlist,
+  safeReturnTo,
+  signInPath,
+} from './access';
 
 const allowlist = parseAllowlist('CaseyKelly, UpasanaAjbani');
 
@@ -82,5 +89,44 @@ describe('decideAccess', () => {
       kind: 'redirect',
       to: '/not-authorized',
     });
+  });
+});
+
+describe('signInPath', () => {
+  it('carries the path to come back to', () => {
+    expect(signInPath('/scans/abc')).toBe('/sign-in?callbackUrl=%2Fscans%2Fabc');
+    expect(signInPath('/')).toBe('/sign-in?callbackUrl=%2F');
+  });
+
+  it('carries nothing when there is no path', () => {
+    expect(signInPath()).toBe('/sign-in');
+    expect(signInPath('')).toBe('/sign-in');
+  });
+
+  it.each([
+    'https://evil.example/',
+    '//evil.example/',
+    '/\\evil.example',
+    'scans/abc',
+    'javascript:1',
+    '/\t/evil.example',
+    '/\n/evil.example',
+    '/scans/abc\r\n',
+    '/\u0000',
+  ])('drops %j, which is not a path of ours', (returnTo) => {
+    expect(signInPath(returnTo)).toBe('/sign-in');
+    expect(safeReturnTo(returnTo)).toBeNull();
+  });
+});
+
+describe('safeReturnTo', () => {
+  it('keeps paths of ours, with their query', () => {
+    expect(safeReturnTo('/scans/abc?x=1')).toBe('/scans/abc?x=1');
+    expect(safeReturnTo('/')).toBe('/');
+  });
+
+  it('refuses anything that is not a single string', () => {
+    expect(safeReturnTo(undefined)).toBeNull();
+    expect(safeReturnTo(['/a', '/b'])).toBeNull();
   });
 });
