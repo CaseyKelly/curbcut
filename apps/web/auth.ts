@@ -12,13 +12,14 @@ import {
 declare module 'next-auth' {
   interface Session {
     /** The GitHub login, which is what the allowlist and `created_by` use. */
-    user: { login?: string } & DefaultSession['user'];
+    user: { login?: string; githubId?: number } & DefaultSession['user'];
   }
 }
 
 declare module '@auth/core/jwt' {
   interface JWT {
     login?: string;
+    githubId?: number;
   }
 }
 
@@ -38,10 +39,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     jwt({ token, profile }) {
       if (typeof profile?.login === 'string') token.login = profile.login;
+      // The numeric id is stable across renames; scans record it as their author (#8).
+      if (typeof profile?.id === 'number') token.githubId = profile.id;
       return token;
     },
     session({ session, token }) {
       session.user.login = token.login;
+      session.user.githubId = token.githubId;
       return session;
     },
     // Runs in proxy.ts for every matched request.

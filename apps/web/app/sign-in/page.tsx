@@ -1,17 +1,24 @@
 import type { Metadata } from 'next';
 import { signIn } from '@/auth';
+import { safeReturnTo } from '@/lib/access';
 
 export const metadata: Metadata = { title: 'Sign in · Curbcut' };
 
-type Props = { searchParams: Promise<{ callbackUrl?: string; error?: string }> };
+type Props = {
+  searchParams: Promise<{ callbackUrl?: string | string[]; error?: string | string[] }>;
+};
 
-/** Public (#4). Auth.js only follows a same-origin callbackUrl, so passing it on is safe. */
+/**
+ * Public (#4). `callbackUrl` comes from the address bar, so it's only passed on
+ * if it's a path of ours. Auth.js checks the origin too.
+ */
 export default async function SignInPage({ searchParams }: Props) {
   const { callbackUrl, error } = await searchParams;
+  const redirectTo = safeReturnTo(callbackUrl) ?? '/';
 
   async function signInWithGitHub() {
     'use server';
-    await signIn('github', { redirectTo: callbackUrl ?? '/' });
+    await signIn('github', { redirectTo });
   }
 
   return (

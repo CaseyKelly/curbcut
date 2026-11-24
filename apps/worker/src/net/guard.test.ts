@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { UnsafeUrlError } from '../errors';
-import { assertScanUrl, isPrivateAddress, resolvePublic, type ResolvedAddress } from './guard';
+import { assertScanUrl, resolvePublic, type ResolvedAddress } from './guard';
 
 const dns =
   (records: Record<string, string[]>) =>
@@ -12,37 +12,7 @@ const dns =
       })),
     );
 
-describe('isPrivateAddress', () => {
-  it.each([
-    '127.0.0.1',
-    '10.1.2.3',
-    '172.16.0.1',
-    '172.31.255.255',
-    '192.168.1.1',
-    '169.254.169.254',
-    '100.64.0.1',
-    '0.0.0.0',
-    '224.0.0.1',
-    '255.255.255.255',
-    '::1',
-    '::',
-    'fd00::1',
-    'fe80::1',
-    '::ffff:127.0.0.1',
-    '::ffff:10.0.0.1',
-    '64:ff9b::a00:1',
-    'not-an-ip',
-  ])('blocks %s', (address) => {
-    expect(isPrivateAddress(address)).toBe(true);
-  });
-
-  it.each(['93.184.215.14', '8.8.8.8', '172.32.0.1', '2606:4700::6810:84e5', '::ffff:8.8.8.8'])(
-    'allows %s',
-    (address) => {
-      expect(isPrivateAddress(address)).toBe(false);
-    },
-  );
-});
+// `isPrivateAddress`, the address list itself, is tested in packages/core/src/net.test.ts.
 
 describe('resolvePublic', () => {
   const resolve = dns({
