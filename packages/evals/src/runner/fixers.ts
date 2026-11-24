@@ -1,14 +1,14 @@
-// What the runner scores. The live fixer will call `proposeFix` from
-// @curbcut/agent once it lands (#9). Until then, and for checking the
-// harness itself, there are two fixers that cost nothing:
+// What the runner scores. The live fixer, in live.ts, calls `proposeFix` from
+// @curbcut/agent (#9). For checking the harness itself there are two fixers
+// that cost nothing:
 //
 // - reference: answers every case with its expected outcome, and fix cases
 //   with the diff from input/ to expected/. Every case should pass; if one
 //   doesn't, the harness or the case is wrong, not the agent.
 // - rescore: returns the proposals saved in an earlier run's JSON report, so a
 //   change to the scorers or the harness can be checked for free. It never
-//   runs agent code; `--replay` will, on recorded responses, once the provider
-//   has a replay mode (#6).
+//   runs agent code; the live fixer with `LLM_MODE=replay` does, on recorded
+//   responses.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PatchProposal, type EvalCase } from '@curbcut/core';

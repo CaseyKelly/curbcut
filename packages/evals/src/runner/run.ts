@@ -7,8 +7,9 @@
 //   npm run evals -- --case <id> ...      only these cases
 //   npm run evals -- --out <path>         where to write the report
 //
-// Without --reference or --rescore it runs the live fixer, which needs
-// proposeFix from @curbcut/agent (#9). Needs Chromium:
+// Without --reference or --rescore it runs the live fixer, which calls
+// proposeFix from @curbcut/agent (#9). LLM_MODE picks live, record or replay
+// (the default outside production); see live.ts. Needs Chromium:
 // `npx playwright install chromium`.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -61,11 +62,26 @@ if (values.reference && values.rescore) {
     process.exit(2);
   }
 } else {
-  console.error(
-    'The live fixer needs proposeFix from @curbcut/agent (#9), which has not landed yet.\n' +
-      'Use --reference to check the harness, or --rescore <report.json>.',
-  );
-  process.exit(2);
+  mode = 'live';
+  // Imported only here, so --reference and --rescore never load agent code.
+  const { liveFixer } = await import('./live.ts');
+  try {
+    const live = await liveFixer({
+      runId: `eval-${new Date().toISOString()}`,
+      recordingsDir: join(evalsRoot, 'recordings'),
+    });
+    const spend =
+      live.priorSpendUsd === undefined
+        ? ''
+        : `, $${live.priorSpendUsd.toFixed(2)} spent this month before this run`;
+    console.log(
+      `Live fixer: ${live.model}, prompt ${live.promptVersion}, LLM_MODE=${live.llmMode}${spend}`,
+    );
+    fixer = live;
+  } catch (e) {
+    console.error(`Can't start the live fixer: ${(e as Error).message}`);
+    process.exit(2);
+  }
 }
 
 const { manifest, cases: allCases, errors } = validateDataset(join(evalsRoot, 'dataset'));
