@@ -137,6 +137,7 @@ describe('createProvider', () => {
           inputTokens: 1_000,
           outputTokens: 200,
           costUsd: cost,
+          recordedCostUsd: cost,
         },
       ]);
     });
@@ -239,7 +240,9 @@ describe('createProvider', () => {
     expect(result.recordedCostUsd).toBe(recorded.costUsd);
     expect(result.recordedCostUsd).toBeGreaterThan(0);
     // Tokens are still recorded, at no cost, and the budget doesn't apply.
-    expect(ledger.records).toMatchObject([{ inputTokens: 1_000, costUsd: 0 }]);
+    expect(ledger.records).toMatchObject([
+      { inputTokens: 1_000, costUsd: 0, recordedCostUsd: recorded.costUsd },
+    ]);
     expect(send).toHaveBeenCalledOnce();
   });
 

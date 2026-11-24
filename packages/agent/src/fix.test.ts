@@ -141,6 +141,8 @@ describe('proposeFix', () => {
       );
     await refuse('.env');
     await refuse('config/.env.local');
+    await refuse('.envrc');
+    await refuse('deploy/.env-production');
     await refuse('certs/server.pem');
     await refuse('../outside.tsx');
     await refuse('/abs/App.tsx');

@@ -78,10 +78,17 @@ export async function liveFixer({
         // live runs compare; spentUsd is what was actually paid (0 in replay).
         return { proposal: r.proposal, costUsd: r.recordedCostUsd, spentUsd: r.costUsd };
       } catch (e) {
-        // A call that failed after it was charged (a repair that still failed)
-        // still cost money. Replayed calls are recorded at $0.
-        const spent = memory.records.slice(before).reduce((sum, u) => sum + u.costUsd, 0);
-        return { error: (e as Error).message || String(e), costUsd: spent, spentUsd: spent };
+        // A case that failed after its calls were made (a refusal, a cut-off
+        // answer, a repair that still failed) still cost them, every attempt
+        // included. Priced from the tokens, as for a success; spent is 0 in replay.
+        const calls = memory.records.slice(before);
+        const sum = (pick: (u: (typeof calls)[number]) => number) =>
+          calls.reduce((total, u) => total + pick(u), 0);
+        return {
+          error: (e as Error).message || String(e),
+          costUsd: sum((u) => u.recordedCostUsd),
+          spentUsd: sum((u) => u.costUsd),
+        };
       }
     },
   };

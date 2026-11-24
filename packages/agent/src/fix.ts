@@ -28,7 +28,8 @@ export const MAX_FIX_FILE_CHARS = 60_000;
  * scanner arrives with repo mode (#21), which also scans file contents.
  */
 const DENYLIST = [
-  /(^|\/)\.env($|\.)/i,
+  // Every .env-prefixed name: .env, .env.local, .env-production, .envrc.
+  /(^|\/)\.env[^/]*$/i,
   /(^|\/)\.npmrc$/i,
   /(^|\/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/i,
   /\.(pem|key|p12|pfx|crt|cer|der|jks|keystore)$/i,

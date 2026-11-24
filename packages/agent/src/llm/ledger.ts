@@ -9,7 +9,13 @@ export interface UsageRecord {
   /** All input, cached or not. The cost carries the price difference. */
   inputTokens: number;
   outputTokens: number;
+  /** What was charged: 0 in replay mode. */
   costUsd: number;
+  /**
+   * The call priced from its tokens, even in replay mode. Not stored by the
+   * database ledger; evals use it to price a failed case comparably.
+   */
+  recordedCostUsd: number;
 }
 
 export interface UsageLedger {
