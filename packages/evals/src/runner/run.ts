@@ -4,12 +4,14 @@
 //
 //   npm run evals -- --reference          harness self-check: every case should pass
 //   npm run evals -- --rescore <report>   re-score a saved run for free
+//   npm run evals -- --replay             run proposeFix on recorded responses, for free
 //   npm run evals -- --case <id> ...      only these cases
 //   npm run evals -- --out <path>         where to write the report
 //
 // Without --reference or --rescore it runs the live fixer, which calls
 // proposeFix from @curbcut/agent (#9). LLM_MODE picks live, record or replay
-// (the default outside production); see live.ts. Needs Chromium:
+// (the default outside production); see live.ts. --replay forces replay
+// whatever LLM_MODE says. Needs Chromium:
 // `npx playwright install chromium`.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -40,6 +42,7 @@ const { values } = parseArgs({
   options: {
     reference: { type: 'boolean', default: false },
     rescore: { type: 'string' },
+    replay: { type: 'boolean', default: false },
     case: { type: 'string', multiple: true },
     out: { type: 'string' },
   },
@@ -47,8 +50,8 @@ const { values } = parseArgs({
 
 let mode: RunMode;
 let fixer: Fixer;
-if (values.reference && values.rescore) {
-  console.error('Use --reference or --rescore, not both.');
+if ([values.reference, values.rescore !== undefined, values.replay].filter(Boolean).length > 1) {
+  console.error('Use only one of --reference, --rescore and --replay.');
   process.exit(2);
 } else if (values.reference) {
   mode = 'reference';
@@ -69,6 +72,7 @@ if (values.reference && values.rescore) {
     const live = await liveFixer({
       runId: `eval-${new Date().toISOString()}`,
       recordingsDir: join(evalsRoot, 'recordings'),
+      mode: values.replay ? 'replay' : undefined,
     });
     const spend =
       live.priorSpendUsd === undefined

@@ -8,10 +8,11 @@ npm run evals -- --reference           # check the runner: the reference answers
 npm run evals -- --rescore <report>    # re-score a saved run, for free
 npm run evals -- --case <id> --case …  # only these cases
 LLM_MODE=record npm run evals          # the live fixer (proposeFix), saving its responses
-npm run evals                          # the live fixer, replaying saved responses
+npm run evals                          # the live fixer, following LLM_MODE (replay unless set)
+npm run evals -- --replay              # the live fixer on saved responses only: never spends
 ```
 
-The runner scores each case with (a) resolved, (b) build safe, (c) scoped, and (e) cost and latency, prints a summary table, and writes a JSON report to `packages/evals/reports/` (or `--out`). Scoring (a) needs Chromium: `npx playwright install chromium`. The live fixer calls `proposeFix` from `@curbcut/agent` (#9). It follows `LLM_MODE`, which defaults to replay outside production and reads recordings from `packages/evals/recordings` unless `LLM_RECORDINGS_DIR` says otherwise; `live` and `record` need `ANTHROPIC_API_KEY`.
+The runner scores each case with (a) resolved, (b) build safe, (c) scoped, and (e) cost and latency, prints a summary table, and writes a JSON report to `packages/evals/reports/` (or `--out`). Scoring (a) needs Chromium: `npx playwright install chromium`. The live fixer calls `proposeFix` from `@curbcut/agent` (#9). It follows `LLM_MODE`, which defaults to replay outside production and reads recordings from `packages/evals/recordings` unless `LLM_RECORDINGS_DIR` says otherwise; `live` and `record` need `ANTHROPIC_API_KEY`. `--replay` forces replay whatever `LLM_MODE` says, so it can't spend money; a case with no recording fails.
 
 ## Layout
 
