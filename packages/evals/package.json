@@ -10,7 +10,8 @@
     "typecheck": "tsc -p . && tsc -p dataset",
     "scan:sample-site": "node src/sample-site/scan.ts",
     "evals:validate": "node src/dataset/validate.ts",
-    "evals": "tsx src/runner/run.ts",
+    "evals": "tsx --env-file-if-exists=../../.env src/runner/run.ts",
+    "evals:calibrate": "tsx --env-file-if-exists=../../.env src/calibration/calibrate.ts",
     "evals:save": "tsx --env-file-if-exists=../../.env src/store/save-run.ts",
     "evals:compare": "tsx --env-file-if-exists=../../.env src/store/compare-runs.ts"
   },

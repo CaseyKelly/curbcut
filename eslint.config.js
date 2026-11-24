@@ -15,6 +15,8 @@ export default tseslint.config(
       '**/next-env.d.ts',
       // Eval cases contain deliberately broken code.
       'packages/evals/dataset/',
+      // Judge calibration fixes, some flawed on purpose.
+      'packages/evals/calibration/items/',
       // Eval runner scratch space: patched case files, mid-run.
       'packages/evals/.eval-tmp/',
       // The sample site's pages are full of a11y bugs on purpose. Its config

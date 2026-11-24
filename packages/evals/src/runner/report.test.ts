@@ -27,6 +27,18 @@ describe('passed', () => {
     expect(passed('fix', result('no_change_needed', { scoped: true }))).toBe(false);
   });
 
+  it('needs a judge score of 3 or more in a judged run (#15)', () => {
+    const judge = (score: number) => ({ score, reason: 'r', model: 'j', promptVersion: 'v' });
+    const judged = { judged: true };
+    expect(passed('fix', result('fix', { ...ok, judge: judge(3) }), judged)).toBe(true);
+    expect(passed('fix', result('fix', { ...ok, judge: judge(2) }), judged)).toBe(false);
+    // The judge was asked for but couldn't score it.
+    expect(passed('fix', result('fix', ok), judged)).toBe(false);
+    // A run without the judge (the smoke tier) passes on (a) to (c).
+    expect(passed('fix', result('fix', ok))).toBe(true);
+    expect(passed('no_change_needed', result('no_change_needed'), judged)).toBe(true);
+  });
+
   it('accepts no_change_needed or unsure, never a fix, for a no-change case', () => {
     expect(passed('no_change_needed', result('no_change_needed'))).toBe(true);
     expect(passed('no_change_needed', result('unsure'))).toBe(true);

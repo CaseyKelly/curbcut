@@ -1,11 +1,17 @@
 // Runs a fixer over the eval dataset and scores each case (#13):
-// (a) resolved, (b) build safe, (c) scoped, (e) cost and latency. Prints a
-// summary table and writes a JSON report.
+// (a) resolved, (b) build safe, (c) scoped, (e) cost and latency, and with
+// --judge (d) an LLM judge (#15). Prints a summary table and writes a JSON
+// report.
 //
 //   npm run evals -- --reference          harness self-check: every case should pass
 //   npm run evals -- --rescore <report>   re-score a saved run for free
+//   npm run evals -- --judge              also score fixes with the judge (LLM_MODE applies)
 //   npm run evals -- --case <id> ...      only these cases
 //   npm run evals -- --out <path>         where to write the report
+//
+// The judge is opt-in because it calls the model: in the default replay mode
+// it needs recordings in LLM_RECORDINGS_DIR, and live or record mode spends
+// money. A rescore drops the recorded judge scores unless --judge is given.
 //
 // Without --reference or --rescore it runs the live fixer, which calls
 // proposeFix from @curbcut/agent (#9). LLM_MODE picks live, record or replay
@@ -16,14 +22,19 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { PatchProposal, type EvalResult, type EvalScores } from '@curbcut/core';
+import { createPatch } from 'diff';
 import { z } from 'zod';
 import { validateDataset, type LoadedCase } from '../dataset/dataset.ts';
 import { scoreBuilds, type BuildCheck } from '../scorers/build.ts';
+import { judgeFix, judgeInput } from '../scorers/judge.ts';
 import { scanPages, scoreResolved, type Page } from '../scorers/resolved.ts';
 import { scoreScoped } from '../scorers/scoped.ts';
 import { referenceFixer, rescoreFixer, type Fixer } from './fixers.ts';
+import type { UsageLedger } from '@curbcut/agent';
+import { createCallGuard, createEvalLLM, type EvalLLM } from './llm.ts';
 import { applyDiff } from './patch.ts';
 import {
+  JUDGE_PASS_SCORE,
   RunReport,
   passed,
   summaryLines,
@@ -40,6 +51,7 @@ const { values } = parseArgs({
   options: {
     reference: { type: 'boolean', default: false },
     rescore: { type: 'string' },
+    judge: { type: 'boolean', default: false },
     case: { type: 'string', multiple: true },
     out: { type: 'string' },
   },
@@ -47,6 +59,8 @@ const { values } = parseArgs({
 
 let mode: RunMode;
 let fixer: Fixer;
+/** The live fixer's ledger, which the judge shares so one guard sees all the run's spend. */
+let liveLedger: UsageLedger | undefined;
 if (values.reference && values.rescore) {
   console.error('Use --reference or --rescore, not both.');
   process.exit(2);
@@ -78,8 +92,21 @@ if (values.reference && values.rescore) {
       `Live fixer: ${live.model}, prompt ${live.promptVersion}, LLM_MODE=${live.llmMode}${spend}`,
     );
     fixer = live;
+    liveLedger = live.ledger;
   } catch (e) {
     console.error(`Can't start the live fixer: ${(e as Error).message}`);
+    process.exit(2);
+  }
+}
+
+// Set up the judge before any work, so a missing key or recordings directory
+// fails now rather than after the fixer has run.
+let llm: EvalLLM | undefined;
+if (values.judge) {
+  try {
+    llm = createEvalLLM({ ledger: liveLedger });
+  } catch (e) {
+    console.error(`Can't run the judge: ${(e as Error).message}`);
     process.exit(2);
   }
 }
@@ -110,6 +137,10 @@ type Work = {
   /** Set when the proposal is a fix whose diff applied. */
   patched?: string;
   scores: EvalScores;
+  /** The judge's calls at current prices, replayed or not, so runs compare. */
+  judgeCostUsd: number;
+  /** What the judge's calls actually spent: 0 when replayed. */
+  judgeSpentUsd: number;
 };
 
 // 1. Propose. Cases run one at a time so latency isn't skewed by contention.
@@ -125,6 +156,8 @@ for (const loaded of cases) {
     latencyMs: 0,
     notes: [],
     scores: {},
+    judgeCostUsd: 0,
+    judgeSpentUsd: 0,
   };
   const started = performance.now();
   try {
@@ -221,7 +254,50 @@ try {
   rmSync(scratch, { recursive: true, force: true });
 }
 
-// 4. Report.
+// 4. Judge (d), with --judge: every fix case whose diff applied, so a judge
+// score is there to trend even when (a) to (c) already failed it. A failed
+// call is a note, and the case fails without a judge score. An account-wide
+// error (the budget, the console spend limit) stops the calls for the rest.
+let judgeStopped: string | undefined;
+if (llm) {
+  const guard = createCallGuard();
+  try {
+    for (const w of patchedWork) {
+      const c = w.loaded.case;
+      if (c.expectedOutcome !== 'fix' || w.proposal?.outcome !== 'fix') continue;
+      if (guard.stopped) {
+        w.notes.push('judge: not run, the judge stopped early (reason at the end)');
+        continue;
+      }
+      const expectedPath = join(w.loaded.dir, 'expected', c.filePath);
+      const referenceDiff = existsSync(expectedPath)
+        ? createPatch(c.filePath, w.input, readFileSync(expectedPath, 'utf8'))
+        : undefined;
+      const input = judgeInput(c, w.input, w.proposal.diff, {
+        explanation: w.proposal.explanation,
+        referenceDiff,
+      });
+      try {
+        const judged = await judgeFix(llm.provider, input, llm.context);
+        guard.succeeded();
+        w.scores.judge = judged.judgement;
+        w.judgeCostUsd = judged.recordedCostUsd;
+        w.judgeSpentUsd = judged.costUsd;
+        if (judged.judgement.score < JUDGE_PASS_SCORE) {
+          w.notes.push(`judge: ${judged.judgement.score}/5: ${judged.judgement.reason}`);
+        }
+      } catch (e) {
+        guard.failed(e);
+        w.notes.push(`judge: ${(e as Error).message || String(e)}`);
+      }
+    }
+  } finally {
+    await llm.close();
+  }
+  judgeStopped = guard.stopped;
+}
+
+// 5. Report.
 const records: CaseRecord[] = work.map((w) => {
   const c = w.loaded.case;
   const base = {
@@ -250,9 +326,10 @@ const records: CaseRecord[] = work.map((w) => {
     result,
     expectedOutcome: c.expectedOutcome,
     category: c.category,
-    pass: passed(c.expectedOutcome, result),
+    pass: passed(c.expectedOutcome, result, { judged: values.judge }),
     proposal: w.proposal,
     notes,
+    ...(w.judgeCostUsd > 0 && { judgeCostUsd: w.judgeCostUsd }),
   };
 });
 
@@ -265,7 +342,9 @@ const report = RunReport.parse({
   model: fixer.model,
   promptVersion: fixer.promptVersion,
   axeVersion,
-  spentUsd: work.reduce((sum, w) => sum + w.spentUsd, 0),
+  judged: values.judge,
+  // The fixer's and the judge's real spend: what the budget counts once saved.
+  spentUsd: work.reduce((sum, w) => sum + w.spentUsd + w.judgeSpentUsd, 0),
   totals: totals(records),
   cases: records,
 });
@@ -277,6 +356,7 @@ mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
 
 console.log(summaryLines(report).join('\n'));
+if (judgeStopped) console.log(`\nThe judge stopped early: ${judgeStopped}`);
 const shown = relative(cwd, out);
 console.log(`\nReport: ${shown.startsWith('..') ? out : shown}`);
 
