@@ -236,6 +236,7 @@ export function createProvider(options: ProviderOptions): LLMProvider {
       inputTokens: usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens,
       outputTokens: usage.outputTokens,
       costUsd: cost,
+      recordedCostUsd: recordedCost,
     });
     // Saved only after the call is charged, so a failed write can't hide its cost.
     if (mode === 'record') await saveRecording(recordingsDir!, params, message);
