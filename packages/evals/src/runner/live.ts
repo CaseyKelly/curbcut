@@ -81,6 +81,9 @@ export async function liveFixer({
         // A case that failed after its calls were made (a refusal, a cut-off
         // answer, a repair that still failed) still cost them, every attempt
         // included. Priced from the tokens, as for a success; spent is 0 in replay.
+        // Slicing from `before` is right only because the runner proposes one
+        // case at a time; run cases in parallel and this would count another
+        // case's calls. Charge per case then (a ledger per case, say).
         const calls = memory.records.slice(before);
         const sum = (pick: (u: (typeof calls)[number]) => number) =>
           calls.reduce((total, u) => total + pick(u), 0);

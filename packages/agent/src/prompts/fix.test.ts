@@ -22,11 +22,49 @@ const issue = (overrides: Partial<FixableIssue> = {}): FixableIssue => ({
   ...overrides,
 });
 
+/**
+ * Every message `fixOutputFor` can send back to the model on the repair
+ * attempt, one per failing branch, so rewording one changes the hash too.
+ */
+function retryMessages(): string[] {
+  const content = 'a\nb b\n';
+  const schema = fixOutputFor(content);
+  const base: FixOutputType = {
+    outcome: 'fix',
+    edits: [{ find: 'a', replace: 'A' }],
+    question: '',
+    explanation: 'e',
+    confidence: 0.5,
+  };
+  const failing: Partial<FixOutputType>[] = [
+    { outcome: 'unsure', edits: [], question: '' },
+    { question: 'Why?' },
+    { outcome: 'no_change_needed' },
+    { edits: [] },
+    { edits: [{ find: '', replace: 'x' }] },
+    { edits: [{ find: 'zzz', replace: 'x' }] },
+    {
+      edits: [
+        { find: 'a', replace: 'A' },
+        { find: 'zzz', replace: 'x' },
+      ],
+    },
+    { edits: [{ find: 'b', replace: 'x' }] },
+    { edits: [{ find: 'a', replace: 'a' }] },
+  ];
+  return failing.map((o) => {
+    const r = schema.safeParse({ ...base, ...o });
+    if (r.success) throw new Error(`expected ${JSON.stringify(o)} to fail`);
+    return z.prettifyError(r.error);
+  });
+}
+
 describe('prompt version', () => {
-  // If this fails you changed the prompt text, the message layout, or
-  // `FixOutput`. Bump FIX_PROMPT_VERSION, then replace the pinned hash.
+  // If this fails you changed the prompt text, the message layout,
+  // `FixOutput`, or a message the model gets back on a retry. Bump
+  // FIX_PROMPT_VERSION, then replace the pinned hash.
   const PINNED: Record<string, string> = {
-    'fix-v1': '865665000985aaa08839da9435e21bc2d12d3ca531938a73f112691410f0d4ff',
+    'fix-v1': '5ccbb7317096e8533ae45960733e7fbaa101e70715882935d835c9e0733d5fd5',
   };
 
   it('is bumped whenever the prompt changes', () => {
@@ -34,6 +72,7 @@ describe('prompt version', () => {
       FIX_SYSTEM,
       fixMessage(fixInput('Hero.tsx', issue()), 'export const A = 1;'),
       JSON.stringify(z.toJSONSchema(FixOutput)),
+      ...retryMessages(),
     ].join('\n----\n');
     const hash = createHash('sha256').update(text).digest('hex');
     expect(PINNED[FIX_PROMPT_VERSION]).toBe(hash);

@@ -1,8 +1,8 @@
 // The prompt that fixes one accessibility issue in one file (#9). Versioned
-// like the explain prompt: change the system text, the message layout, or
-// `FixOutput` and you must bump `FIX_PROMPT_VERSION`, because eval results
-// record it and compare runs by it. `fix.test.ts` pins a hash of all three so
-// forgetting fails CI.
+// like the explain prompt: change the system text, the message layout,
+// `FixOutput`, or a message `fixOutputFor` sends back on a retry, and you must
+// bump `FIX_PROMPT_VERSION`, because eval results record it and compare runs
+// by it. `fix.test.ts` pins a hash of all four so forgetting fails CI.
 //
 // The model doesn't write the unified diff. It returns find-and-replace
 // edits, which `proposeFix` checks against the file and turns into a diff

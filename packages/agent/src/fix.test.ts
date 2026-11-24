@@ -144,6 +144,11 @@ describe('proposeFix', () => {
     await refuse('.envrc');
     await refuse('deploy/.env-production');
     await refuse('certs/server.pem');
+    await refuse('.netrc');
+    await refuse('.pypirc');
+    await refuse('home/.git-credentials');
+    await refuse('gcp-credentials.json');
+    await refuse('config/credentials.json');
     await refuse('../outside.tsx');
     await refuse('/abs/App.tsx');
     await refuse('App.tsx', 'x'.repeat(MAX_FIX_FILE_CHARS + 1));
